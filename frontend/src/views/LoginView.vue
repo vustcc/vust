@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { AuthBody } from '@/api/interface'
 import http from '@/api'
+import VustIcon from '@/components/icons/VustIcon.vue'
+import { VustSelect } from '@/components/ui'
 import { markAuthState } from '@/router'
+import { useThemeStore } from '@/stores/theme'
 import { versionStaticAsset } from '@/utils/static-assets'
 import { useI18n } from 'vue-i18n'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const themeStore = useThemeStore()
 const username = ref('')
 const password = ref('')
 const captcha = ref('')
@@ -19,6 +23,16 @@ const errorMessage = ref('')
 const router = useRouter()
 const brandLogo = versionStaticAsset('/images/vust-brand-logo.png')
 
+const languageOptions = computed(() => [
+  { value: 'zh', label: t('app.settings.language.zh') },
+  { value: 'en', label: t('app.settings.language.en') },
+])
+const currentThemeLabel = computed(() => t(`app.settings.theme.${themeStore.currentTheme}`))
+const themeIcon = computed(() => (themeStore.isDark ? 'moon' : 'sun'))
+const themeButtonLabel = computed(
+  () => `${t('app.settings.theme.label')}: ${currentThemeLabel.value}`,
+)
+
 interface CaptchaPayload {
   captcha_id: string
   image: string
@@ -28,6 +42,24 @@ interface CaptchaStatusPayload {
   captchaRequired: boolean
   locked: boolean
   lockoutRemaining?: number | null
+}
+
+/**
+ * @description 在浅色与深色登录页主题之间切换。
+ */
+function toggleTheme() {
+  themeStore.toggleTheme()
+}
+
+/**
+ * @description 更新登录页语言偏好并写入本地存储。
+ * @param nextLocale 语言选择器返回的值。
+ */
+function updateLocale(nextLocale: string | number | null) {
+  if (nextLocale === 'zh' || nextLocale === 'en') {
+    locale.value = nextLocale
+    localStorage.setItem('vust_locale', nextLocale)
+  }
 }
 
 async function loadCaptchaStatus() {
@@ -99,6 +131,39 @@ onMounted(() => {
 
 <template>
   <div class="login-container" data-page="login">
+    <div class="login-preferences" data-ui="login-preferences">
+      <a
+        class="preference-button github-link"
+        href="https://github.com/vustcc/vust"
+        target="_blank"
+        rel="noopener noreferrer"
+        :aria-label="`${$t('login.brand')} GitHub`"
+        title="GitHub"
+        data-ui="login-github-link"
+      >
+        <VustIcon name="github" :size="20" decorative />
+      </a>
+      <button
+        type="button"
+        class="preference-button theme-toggle"
+        :aria-label="themeButtonLabel"
+        :aria-pressed="themeStore.isDark"
+        :title="themeButtonLabel"
+        data-ui="login-theme-button"
+        @click="toggleTheme"
+      >
+        <VustIcon :name="themeIcon" :size="18" decorative />
+      </button>
+      <VustSelect
+        class="language-select"
+        :model-value="locale"
+        :options="languageOptions"
+        :aria-label="$t('app.settings.language.label')"
+        data-ui="login-language-select"
+        @update:model-value="updateLocale"
+      />
+    </div>
+
     <div class="login-card" data-ui="login-card" aria-labelledby="login-title">
       <div class="login-header" data-slot="header">
         <h1 id="login-title" class="visually-hidden">{{ $t('login.brand') }}</h1>
@@ -209,6 +274,65 @@ onMounted(() => {
   justify-content: center;
   align-items: center;
   padding: var(--vdl-space-8) var(--vdl-space-4);
+}
+
+.login-preferences {
+  position: absolute;
+  z-index: var(--vdl-z-index-window);
+  top: var(--vdl-space-4);
+  right: var(--vdl-space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--vdl-space-2);
+}
+
+.login-preferences :deep(.language-select.vl-select) {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 88px;
+}
+
+.preference-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  flex: none;
+  color: var(--vdl-text-secondary);
+  background: var(--vdl-bg-input);
+  border: 1px solid var(--vdl-border-default);
+  border-radius: var(--vdl-radius-md);
+  font-family: var(--vdl-font-family);
+  font-size: var(--vdl-font-body-sm);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.preference-button:hover {
+  color: var(--vdl-text-primary);
+  background: var(--vdl-bg-hover);
+  border-color: var(--vdl-border-strong);
+}
+
+.preference-button:focus-visible {
+  outline: none;
+  border-color: var(--vdl-primary);
+  box-shadow: var(--vdl-focus-ring);
+}
+
+.theme-toggle {
+  width: 36px;
+  padding: 0;
+}
+
+.github-link {
+  width: 36px;
+  padding: 0;
 }
 
 .login-card {
@@ -415,6 +539,18 @@ onMounted(() => {
   .login-card {
     padding: 36px 28px 32px;
     gap: 28px;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-preferences {
+    top: var(--vdl-space-3);
+    right: var(--vdl-space-3);
+    gap: var(--vdl-space-1);
+  }
+
+  .login-preferences :deep(.language-select.vl-select) {
+    min-width: 80px;
   }
 }
 </style>

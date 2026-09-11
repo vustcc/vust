@@ -4,7 +4,11 @@
 
 ## [Unreleased]
 
-## [0.1.0-alpha.1](https://github.com/vustcc/vust/releases/tag/0.1.0-alpha.1) - 2026-09-10
+### Added
+
+- 登录页新增 GitHub 项目入口、浅色与深色主题切换，以及中文与英文语言选择。
+
+## [0.1.0-alpha.1](https://github.com/vustcc/vust/commits/0.1.0-alpha.1) - 2026-09-10
 
 ### Added
 
