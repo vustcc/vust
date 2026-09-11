@@ -1,0 +1,17 @@
+[Unit]
+Description=VUST Control Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=__VUST_HOME__
+Environment=VUST_HOME=__VUST_HOME__
+ExecStart=/usr/local/bin/vust start
+Restart=always
+RestartSec=5
+TimeoutStopSec=20s
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

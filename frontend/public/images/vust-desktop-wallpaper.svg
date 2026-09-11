@@ -1,0 +1,187 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3840 2160" role="img" aria-labelledby="title desc">
+  <title id="title">VUST desktop wallpaper</title>
+  <desc id="desc">Minimal vector desktop wallpaper for a distributed security laboratory platform.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B1020"/>
+      <stop offset="0.52" stop-color="#111827"/>
+      <stop offset="1" stop-color="#070B16"/>
+    </linearGradient>
+    <radialGradient id="northGlow" cx="50%" cy="18%" r="62%">
+      <stop offset="0" stop-color="#2563EB" stop-opacity="0.18"/>
+      <stop offset="0.42" stop-color="#14B8A6" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#0B1020" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="edgeGlow" cx="20%" cy="74%" r="52%">
+      <stop offset="0" stop-color="#22D3EE" stop-opacity="0.18"/>
+      <stop offset="0.5" stop-color="#A78BFA" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#0B1020" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="cyanLine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22D3EE" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#22D3EE" stop-opacity="0.78"/>
+      <stop offset="1" stop-color="#60A5FA" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="tealLine" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14B8A6" stop-opacity="0"/>
+      <stop offset="0.52" stop-color="#2DD4BF" stop-opacity="0.74"/>
+      <stop offset="1" stop-color="#38BDF8" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="purpleLine" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#60A5FA" stop-opacity="0"/>
+      <stop offset="0.48" stop-color="#A78BFA" stop-opacity="0.58"/>
+      <stop offset="1" stop-color="#22D3EE" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1E293B" stop-opacity="0.54"/>
+      <stop offset="1" stop-color="#0F172A" stop-opacity="0.24"/>
+    </linearGradient>
+    <pattern id="grid" width="96" height="96" patternUnits="userSpaceOnUse">
+      <path d="M96 0H0V96" fill="none" stroke="#93C5FD" stroke-opacity="0.042" stroke-width="1"/>
+    </pattern>
+    <pattern id="microGrid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#67E8F9" stroke-opacity="0.028" stroke-width="1"/>
+    </pattern>
+    <marker id="arrowCyan" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2 2 10 6 2 10" fill="none" stroke="#22D3EE" stroke-opacity="0.7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrowTeal" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2 2 10 6 2 10" fill="none" stroke="#2DD4BF" stroke-opacity="0.66" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <symbol id="agentNode" viewBox="0 0 156 92">
+      <rect x="2" y="2" width="152" height="88" rx="14" fill="url(#panel)" stroke="#38BDF8" stroke-opacity="0.52" stroke-width="2"/>
+      <circle cx="34" cy="46" r="10" fill="#22D3EE" fill-opacity="0.78"/>
+      <path d="M62 30h62M62 46h44M62 62h56" stroke="#BAE6FD" stroke-opacity="0.48" stroke-width="4" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="hexNode" viewBox="0 0 132 116">
+      <path d="M66 4 126 36v44l-60 32L6 80V36Z" fill="#0F172A" fill-opacity="0.52" stroke="#2DD4BF" stroke-opacity="0.62" stroke-width="3"/>
+      <circle cx="66" cy="58" r="18" fill="#14B8A6" fill-opacity="0.16" stroke="#5EEAD4" stroke-opacity="0.62" stroke-width="2"/>
+      <path d="M46 58h40M66 38v40" stroke="#5EEAD4" stroke-opacity="0.38" stroke-width="3" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="containerBlock" viewBox="0 0 180 112">
+      <rect x="2" y="2" width="176" height="108" rx="16" fill="url(#panel)" stroke="#60A5FA" stroke-opacity="0.46" stroke-width="2"/>
+      <rect x="24" y="28" width="40" height="30" rx="6" fill="#1D4ED8" fill-opacity="0.28" stroke="#60A5FA" stroke-opacity="0.72"/>
+      <rect x="70" y="28" width="40" height="30" rx="6" fill="#0F766E" fill-opacity="0.24" stroke="#2DD4BF" stroke-opacity="0.64"/>
+      <rect x="116" y="28" width="40" height="30" rx="6" fill="#6D28D9" fill-opacity="0.20" stroke="#A78BFA" stroke-opacity="0.54"/>
+      <path d="M28 78h124" stroke="#93C5FD" stroke-opacity="0.24" stroke-width="3" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="protocolTile" viewBox="0 0 210 130">
+      <rect x="2" y="2" width="206" height="126" rx="16" fill="#0F172A" fill-opacity="0.42" stroke="#A78BFA" stroke-opacity="0.4" stroke-width="2"/>
+      <circle cx="42" cy="42" r="12" fill="#22D3EE" fill-opacity="0.6"/>
+      <circle cx="84" cy="42" r="12" fill="#2DD4BF" fill-opacity="0.52"/>
+      <circle cx="126" cy="42" r="12" fill="#A78BFA" fill-opacity="0.42"/>
+      <path d="M32 82h142M32 102h92" stroke="#CBD5E1" stroke-opacity="0.24" stroke-width="4" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="analyticsPanel" viewBox="0 0 260 150">
+      <rect x="2" y="2" width="256" height="146" rx="18" fill="url(#panel)" stroke="#60A5FA" stroke-opacity="0.42" stroke-width="2"/>
+      <path d="M32 116h196M32 38v78" stroke="#334155" stroke-width="4" stroke-linecap="round"/>
+      <polyline points="34,96 68,78 100,88 132,54 166,68 202,42 228,52" fill="none" stroke="#22D3EE" stroke-opacity="0.72" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="132" cy="54" r="8" fill="#A78BFA" fill-opacity="0.78"/>
+    </symbol>
+  </defs>
+
+  <rect width="3840" height="2160" fill="url(#bg)"/>
+  <rect width="3840" height="2160" fill="url(#grid)"/>
+  <rect width="3840" height="2160" fill="url(#microGrid)" opacity="0.62"/>
+  <rect width="3840" height="2160" fill="url(#northGlow)"/>
+  <rect width="3840" height="2160" fill="url(#edgeGlow)"/>
+
+  <ellipse cx="1920" cy="1080" rx="930" ry="520" fill="#0B1020" opacity="0.34"/>
+  <ellipse cx="1920" cy="1080" rx="710" ry="390" fill="#0B1020" opacity="0.34"/>
+  <rect x="1140" y="560" width="1560" height="1040" rx="72" fill="#0B1020" opacity="0.12"/>
+
+  <g id="topology" opacity="0.9">
+    <path d="M442 520C790 340 1140 364 1508 650M442 520C706 790 936 992 1320 1058M442 520C380 840 502 1200 774 1458M1508 650C1840 474 2216 438 2594 616M2594 616C2900 778 3072 1034 3284 1314M1320 1058C1670 1264 2048 1260 2420 1042M774 1458C1208 1674 1678 1658 2128 1500M2128 1500C2522 1510 2868 1436 3284 1314M1508 650C1698 848 1894 934 2142 846M2420 1042C2648 902 2814 786 3108 840"
+      fill="none" stroke="#334155" stroke-width="3"/>
+    <path d="M442 520C790 340 1140 364 1508 650M1508 650C1840 474 2216 438 2594 616M2594 616C2900 778 3072 1034 3284 1314"
+      fill="none" stroke="url(#cyanLine)" stroke-width="5" stroke-linecap="round" marker-end="url(#arrowCyan)"/>
+    <path d="M442 520C706 790 936 992 1320 1058M1320 1058C1670 1264 2048 1260 2420 1042M2420 1042C2648 902 2814 786 3108 840"
+      fill="none" stroke="url(#tealLine)" stroke-width="5" stroke-linecap="round" marker-end="url(#arrowTeal)"/>
+    <path d="M774 1458C1208 1674 1678 1658 2128 1500M2128 1500C2522 1510 2868 1436 3284 1314"
+      fill="none" stroke="url(#purpleLine)" stroke-width="4" stroke-linecap="round"/>
+  </g>
+
+  <g id="nodes">
+    <g transform="translate(326 458)">
+      <circle cx="116" cy="62" r="116" fill="#22D3EE" opacity="0.05"/>
+      <use href="#agentNode" x="38" y="16" width="156" height="92"/>
+      <circle cx="116" cy="62" r="7" fill="#22D3EE"/>
+    </g>
+    <g transform="translate(1418 564)">
+      <circle cx="90" cy="86" r="136" fill="#22D3EE" opacity="0.055"/>
+      <use href="#containerBlock" width="180" height="112"/>
+      <path d="M36 142h108M52 164h76" stroke="#93C5FD" stroke-opacity="0.22" stroke-width="4" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(2478 530)">
+      <use href="#protocolTile" width="210" height="130"/>
+      <path d="M42 162h128" stroke="#2DD4BF" stroke-opacity="0.24" stroke-width="4" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(3174 1232)">
+      <circle cx="110" cy="82" r="140" fill="#A78BFA" opacity="0.045"/>
+      <use href="#analyticsPanel" width="260" height="150"/>
+    </g>
+    <g transform="translate(644 1388)">
+      <use href="#hexNode" x="0" y="0" width="132" height="116"/>
+      <use href="#hexNode" x="160" y="-56" width="132" height="116"/>
+      <use href="#hexNode" x="160" y="68" width="132" height="116"/>
+      <path d="M48 212h252M48 236h148" stroke="#A78BFA" stroke-opacity="0.22" stroke-width="4" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(2290 956)">
+      <rect x="0" y="0" width="260" height="180" rx="22" fill="url(#panel)" stroke="#2DD4BF" stroke-opacity="0.44" stroke-width="2"/>
+      <path d="M48 58h164M48 90h98M48 122h142" stroke="#CCFBF1" stroke-opacity="0.26" stroke-width="5" stroke-linecap="round"/>
+      <circle cx="210" cy="58" r="12" fill="#2DD4BF" fill-opacity="0.56"/>
+    </g>
+    <g transform="translate(1180 976)">
+      <rect x="0" y="0" width="280" height="166" rx="24" fill="url(#panel)" stroke="#A78BFA" stroke-opacity="0.36" stroke-width="2"/>
+      <rect x="38" y="38" width="64" height="52" rx="10" fill="#312E81" fill-opacity="0.26" stroke="#A78BFA" stroke-opacity="0.56"/>
+      <rect x="118" y="38" width="64" height="52" rx="10" fill="#1E3A8A" fill-opacity="0.26" stroke="#60A5FA" stroke-opacity="0.52"/>
+      <rect x="198" y="38" width="44" height="52" rx="10" fill="#064E3B" fill-opacity="0.24" stroke="#2DD4BF" stroke-opacity="0.46"/>
+      <path d="M42 122h196" stroke="#CBD5E1" stroke-opacity="0.2" stroke-width="4" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(2030 1416)">
+      <use href="#containerBlock" width="180" height="112"/>
+      <use href="#agentNode" x="218" y="10" width="156" height="92"/>
+      <path d="M180 56h38" stroke="#38BDF8" stroke-opacity="0.38" stroke-width="4" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(3010 752)">
+      <use href="#hexNode" width="132" height="116"/>
+      <use href="#hexNode" x="126" y="58" width="132" height="116"/>
+      <path d="M38 210h214" stroke="#5EEAD4" stroke-opacity="0.2" stroke-width="4" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <g id="blueprint-overlays" opacity="0.46">
+    <rect x="278" y="1742" width="520" height="182" rx="24" fill="#0F172A" fill-opacity="0.34" stroke="#334155" stroke-width="2"/>
+    <circle cx="332" cy="1810" r="14" fill="#22D3EE" fill-opacity="0.52"/>
+    <circle cx="384" cy="1810" r="14" fill="#2DD4BF" fill-opacity="0.46"/>
+    <circle cx="436" cy="1810" r="14" fill="#A78BFA" fill-opacity="0.38"/>
+    <path d="M500 1788h220M500 1824h156M332 1868h348" stroke="#CBD5E1" stroke-opacity="0.22" stroke-width="5" stroke-linecap="round"/>
+
+    <rect x="3030" y="286" width="530" height="210" rx="26" fill="#0F172A" fill-opacity="0.32" stroke="#334155" stroke-width="2"/>
+    <path d="M3092 430h396M3092 360h88M3228 360h88M3364 360h88" stroke="#93C5FD" stroke-opacity="0.24" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="3136" cy="360" r="20" fill="#1D4ED8" fill-opacity="0.26" stroke="#60A5FA" stroke-opacity="0.48"/>
+    <circle cx="3272" cy="360" r="20" fill="#0F766E" fill-opacity="0.22" stroke="#2DD4BF" stroke-opacity="0.44"/>
+    <circle cx="3408" cy="360" r="20" fill="#6D28D9" fill-opacity="0.2" stroke="#A78BFA" stroke-opacity="0.4"/>
+
+    <path d="M178 304h410M178 352h240M3068 1858h438M3160 1910h220" stroke="#60A5FA" stroke-opacity="0.18" stroke-width="3" stroke-linecap="round"/>
+    <path d="M640 254h260M690 296h150M2790 1748h390M2864 1798h220" stroke="#2DD4BF" stroke-opacity="0.16" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <g id="small-constellation" opacity="0.72">
+    <circle cx="442" cy="520" r="9" fill="#22D3EE"/>
+    <circle cx="1508" cy="650" r="9" fill="#60A5FA"/>
+    <circle cx="2594" cy="616" r="9" fill="#2DD4BF"/>
+    <circle cx="3284" cy="1314" r="9" fill="#A78BFA"/>
+    <circle cx="1320" cy="1058" r="7" fill="#2DD4BF"/>
+    <circle cx="2420" cy="1042" r="7" fill="#38BDF8"/>
+    <circle cx="774" cy="1458" r="8" fill="#A78BFA"/>
+    <circle cx="2128" cy="1500" r="8" fill="#60A5FA"/>
+    <circle cx="3108" cy="840" r="7" fill="#2DD4BF"/>
+    <circle cx="2142" cy="846" r="7" fill="#22D3EE"/>
+  </g>
+
+  <g opacity="0.32">
+    <path d="M160 2028C602 1936 1012 2008 1448 1934S2224 1814 2740 1902 3420 1982 3700 1928" fill="none" stroke="url(#cyanLine)" stroke-width="3"/>
+    <path d="M130 764C628 620 1040 690 1456 544S2280 290 2868 402 3410 528 3688 456" fill="none" stroke="url(#tealLine)" stroke-width="3"/>
+  </g>
+</svg>

@@ -1,0 +1,22 @@
+[package]
+name = "vust-api"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+vust-contracts = { workspace = true }
+vust-security = { workspace = true }
+
+axum = { workspace = true, features = ["multipart"] }
+bcrypt = { workspace = true }
+bollard = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+sqlx = { workspace = true, features = ["chrono", "json"] }
+jsonwebtoken = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true, features = ["fs", "io-util"] }
+tracing = { workspace = true }

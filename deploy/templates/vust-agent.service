@@ -1,0 +1,17 @@
+[Unit]
+Description=VUST Distributed Telemetry Agent
+After=network.target vust.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=__VUST_HOME__
+Environment=VUST_HOME=__VUST_HOME__
+ExecStart=/usr/local/bin/vust-agent start
+Restart=always
+RestartSec=10
+TimeoutStopSec=20s
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

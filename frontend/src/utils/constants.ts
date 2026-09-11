@@ -1,0 +1,2 @@
+export const DEFAULT_CONTROLLER_PORT = 7310
+export const DEFAULT_AGENT_PORT = 7311

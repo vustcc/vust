@@ -1,0 +1,3 @@
+[alias]
+vust = "run -p vust -- start"
+agent = "run -p vust-agent -- start"

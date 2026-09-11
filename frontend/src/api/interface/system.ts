@@ -1,0 +1,29 @@
+export interface SystemAboutInfo {
+  hostname: string
+  osName: string
+  osVersion: string
+  kernelVersion: string
+  architecture: string
+  cpuModel: string
+  cpuVendor: string
+  cpuPhysicalCores: number
+  cpuLogicalCores: number
+  cpuFrequencyMhz: number
+  cpuCacheL3: string
+  memoryTotalBytes: number
+  memoryAvailableBytes: number
+  swapTotalBytes: number
+  swapUsedBytes: number
+  uptimeSeconds: number
+  bootTimeEpoch: number
+  timezone: string
+  locale: string
+  virtualization: string
+  primaryInterface: string
+  macAddress: string
+  ipv4Addresses: string[]
+  ipv6Addresses: string[]
+  defaultGateway: string
+  dnsServers: string[]
+  diskTotalBytes: number
+}

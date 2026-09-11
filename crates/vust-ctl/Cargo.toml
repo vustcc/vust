@@ -1,0 +1,18 @@
+[package]
+name = "vust-ctl"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "vustctl"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true, features = ["derive"] }
+anyhow = { workspace = true }
+libc = { workspace = true }
+rusqlite = { version = "0.32.0", features = ["bundled"] }
+bcrypt = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

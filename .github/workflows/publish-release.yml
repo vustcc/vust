@@ -1,0 +1,183 @@
+name: Publish Release
+
+run-name: "VUST ${{ inputs.version }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version
+        required: true
+        default: 0.1.0-alpha.1
+        type: string
+      rust_target:
+        description: Rust target triple
+        required: true
+        default: x86_64-unknown-linux-musl
+        type: string
+      target_triple:
+        description: Release asset target name
+        required: true
+        default: linux-x86_64
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Validate release input
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid SemVer version: $RELEASE_VERSION"
+            exit 1
+          fi
+
+      - name: Resolve release source
+        id: source
+        env:
+          RELEASE_TAG: ${{ inputs.version }}
+        shell: bash
+        run: |
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            git checkout --detach "refs/tags/$RELEASE_TAG"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Reusing existing release tag: $RELEASE_TAG"
+          else
+            git fetch origin main
+            if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+              echo "New release tags must be created from the latest main commit"
+              exit 1
+            fi
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.34.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Verify source versions
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CARGO_VERSION="$(grep -E '^version[[:space:]]*=' Cargo.toml | head -n 1 | awk -F '"' '{print $2}')"
+          FRONTEND_VERSION="$(node --input-type=module -e "import pkg from './frontend/package.json' with { type: 'json' }; console.log(pkg.version)")"
+
+          if [[ "$CARGO_VERSION" != "$RELEASE_VERSION" ]]; then
+            echo "Cargo.toml version is $CARGO_VERSION, expected $RELEASE_VERSION"
+            exit 1
+          fi
+
+          if [[ "$FRONTEND_VERSION" != "$RELEASE_VERSION" ]]; then
+            echo "frontend/package.json version is $FRONTEND_VERSION, expected $RELEASE_VERSION"
+            exit 1
+          fi
+
+      - name: Reject existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.version }}
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release already exists: $RELEASE_TAG"
+            exit 1
+          fi
+
+      - name: Setup Rust
+        env:
+          RUST_TARGET: ${{ inputs.rust_target }}
+        shell: bash
+        run: |
+          rustup show active-toolchain
+          rustup target add "$RUST_TARGET"
+          rustup target list --installed
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools minisign
+
+      - name: Install frontend dependencies
+        run: pnpm -C frontend install --frozen-lockfile
+
+      - name: Build release package
+        env:
+          VUST_RUST_TARGET: ${{ inputs.rust_target }}
+          VUST_TARGET_TRIPLE: ${{ inputs.target_triple }}
+          VUST_SIGNING_PRIVATE_KEY: ${{ secrets.VUST_SIGNING_PRIVATE_KEY }}
+          VUST_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.VUST_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: ./scripts/build-release.sh
+
+      - name: Resolve release asset
+        id: asset
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          TARGET_TRIPLE: ${{ inputs.target_triple }}
+        shell: bash
+        run: |
+          ASSET="target/vust-$RELEASE_VERSION-$TARGET_TRIPLE.tar.gz"
+          if [[ ! -f "$ASSET" ]]; then
+            echo "Release asset not found: $ASSET"
+            exit 1
+          fi
+          echo "path=$ASSET" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure release tag
+        if: steps.source.outputs.exists != 'true'
+        env:
+          RELEASE_TAG: ${{ inputs.version }}
+        shell: bash
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            git fetch origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            if [[ "$(git rev-list -n 1 "$RELEASE_TAG")" != "$(git rev-parse HEAD)" ]]; then
+              echo "Release tag already points to a different commit: $RELEASE_TAG"
+              exit 1
+            fi
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag --annotate "$RELEASE_TAG" --message "Release $RELEASE_TAG"
+          git push origin "refs/tags/$RELEASE_TAG"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.version }}
+          RELEASE_ASSET: ${{ steps.asset.outputs.path }}
+        shell: bash
+        run: |
+          RELEASE_FLAGS=()
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
+            RELEASE_FLAGS+=(--prerelease)
+          fi
+
+          gh release create "$RELEASE_TAG" "$RELEASE_ASSET" \
+            --verify-tag \
+            --title "VUST $RELEASE_VERSION" \
+            --notes "VUST $RELEASE_VERSION" \
+            "${RELEASE_FLAGS[@]}"

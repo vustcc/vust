@@ -1,0 +1,16 @@
+[package]
+name = "vust-upgrade"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+base64 = { workspace = true }
+blake2b_simd = "1.0.4"
+flate2 = { workspace = true }
+hex = { workspace = true }
+ring = { workspace = true }
+semver = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+tar = { workspace = true }
+thiserror = { workspace = true }

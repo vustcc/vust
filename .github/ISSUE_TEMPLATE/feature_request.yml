@@ -1,0 +1,39 @@
+name: 功能需求
+description: 提出 VUST 主控、Agent 或控制台的新能力或行为改进
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 需求描述
+      description: 描述希望新增或改进什么，以及它解决什么问题。
+      placeholder: 例如：需要按节点分组批量下发套件任务。
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: 影响模块
+      multiple: true
+      options:
+        - 主控服务
+        - Agent
+        - 前端控制台
+        - 节点管理
+        - Docker 管理
+        - 套件管理
+        - 升级/发布
+        - 配置/部署
+        - 文档
+        - 其他
+    validations:
+      required: false
+  - type: textarea
+    id: notes
+    attributes:
+      label: 补充说明
+      description: 记录示例、参考链接、备选方案或验收标准。
+    validations:
+      required: false

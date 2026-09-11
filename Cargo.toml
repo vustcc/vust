@@ -1,0 +1,93 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0-alpha.1"
+edition = "2024"
+authors = ["Wenju Guo"]
+
+[workspace.dependencies]
+vust-api = { path = "crates/vust-api" }
+vust-contracts = { path = "crates/vust-contracts" }
+vust-security = { path = "crates/vust-security" }
+vust-upgrade = { path = "crates/vust-upgrade" }
+
+serde = { version = "1" }
+serde_json = { version = "1" }
+serde_yaml = { version = "0.9" }
+semver = { version = "1" }
+ts-rs = { version = "12.0.1", default-features = false, features = [ "serde-compat", "no-serde-warnings", "chrono-impl", "serde-json-impl" ] }
+thiserror = { version = "2" }
+chrono = { version = "0.4" }
+chrono-tz = "0.10"
+sha2 = "0.10"
+axum = { version = "0.8.7" }
+axum-extra = { version = "0.10" }
+axum-server = { version = "0.7" }
+tower-http = { version = "0.6.6" }
+tokio = { version = "1" }
+tokio-util = { version = "0.7.16" }
+tokio-stream = { version = "0.1.17" }
+jsonwebtoken = { version = "9.3" }
+bcrypt = { version = "0.17.1" }
+bollard = { version = "0.21.0" }
+tracing = { version = "0.1" }
+tracing-subscriber = { version = "0.3" }
+tracing-appender = { version = "0.2" }
+sqlx = { version = "0.8.6" }
+reqwest = { version = "0.12.24" }
+reqwest-websocket = { version = "0.5.1" }
+shadow-rs = { version = "1.4.0" }
+anyhow = { version = "1.0.100" }
+futures-util = { version = "0.3.31" }
+rcgen = { version = "0.13" }
+ring = { version = "0.17" }
+hex = { version = "0.4" }
+base64 = { version = "0.22" }
+png = "0.17"
+flate2 = { version = "1" }
+tar = { version = "0.4" }
+rustls = { version = "0.23" }
+rustls-pemfile = { version = "2" }
+toml = { version = "0.8" }
+sysinfo = { version = "0.30" }
+cron = { version = "0.12" }
+uuid = { version = "1" }
+rust-embed = { version = "8.4.0" }
+mime_guess = { version = "2.0.4" }
+cookie = { version = "0.18" }
+clap = { version = "4" }
+dotenvy = { version = "0.15" }
+libc = "0.2"
+xattr = "1.6.1"
+
+[profile.dev]
+incremental = true
+
+[profile.release]
+# 发布包仍去除符号，减少交付体积；如需生产符号文件，应单独归档 debug 制品。
+strip = true
+# 服务端二进制优先运行性能，避免 opt-level = "s" 为体积牺牲热路径性能。
+opt-level = 3
+# 启用链接期优化，提升跨 crate 优化效果；发布构建时间变长是可接受取舍。
+lto = true
+# 单代码生成单元可获得更充分优化，代价是发布构建速度更慢。
+codegen-units = 1
+# 长期运行服务不使用 abort；panic 应尽量限制在任务边界，避免直接杀死主控或 agent。
+panic = "unwind"
+
+[profile.fast-release]
+inherits = "release"
+# 关闭 LLVM 优化，显著减少代码生成时间
+opt-level = 0
+# 不执行 LTO
+lto = false
+# 提高 crate 内代码生成并行度
+codegen-units = 256
+# 启用增量编译，明显加速修改后的重复构建
+incremental = true
+# 不执行符号剥离
+strip = false
+# 不生成调试信息
+debug = 0
