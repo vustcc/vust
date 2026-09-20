@@ -33,6 +33,7 @@ declare module 'vue' {
     VustDrawer: typeof import('./components/ui/VustDrawer.vue')['default']
     VustEmpty: typeof import('./components/ui/VustEmpty.vue')['default']
     VustFormItem: typeof import('./components/ui/VustFormItem.vue')['default']
+    VustGlassSurface: typeof import('./components/ui/VustGlassSurface.vue')['default']
     VustIcon: typeof import('./components/icons/VustIcon.vue')['default']
     VustInput: typeof import('./components/ui/VustInput.vue')['default']
     VustLoading: typeof import('./components/ui/VustLoading.vue')['default']

@@ -5,6 +5,7 @@ import type { ITerminalOptions } from '@xterm/xterm'
 export type ThemeMode = 'light' | 'dark'
 
 const THEME_STORAGE_KEY = 'vust_theme'
+const GLASS_STORAGE_KEY = 'vust_glass_enabled'
 const DEFAULT_THEME: ThemeMode = 'light'
 
 /**
@@ -36,6 +37,33 @@ export function applyTheme(theme: ThemeMode = getStoredTheme()): ThemeMode {
   }
 
   return theme
+}
+
+/**
+ * @description 读取本地 Liquid Glass 偏好；缺失或无效值默认开启。
+ */
+export function getStoredGlassEnabled(): boolean {
+  if (typeof window === 'undefined') return true
+
+  const stored = window.localStorage.getItem(GLASS_STORAGE_KEY)
+  if (stored === 'false') return false
+  return true
+}
+
+/**
+ * @description 将 Liquid Glass 偏好同步到文档根节点并持久化。
+ * @param enabled 是否启用 Liquid Glass。
+ */
+export function applyGlassPreference(enabled = getStoredGlassEnabled()): boolean {
+  if (typeof document !== 'undefined') {
+    document.documentElement.dataset.glass = enabled ? 'enabled' : 'disabled'
+  }
+
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(GLASS_STORAGE_KEY, String(enabled))
+  }
+
+  return enabled
 }
 
 /**
@@ -118,12 +146,14 @@ export function buildTerminalTheme(mode: ThemeMode): ITerminalOptions['theme'] {
 
 export const useThemeStore = defineStore('theme', () => {
   const currentTheme = ref<ThemeMode>(getStoredTheme())
+  const glassEnabled = ref(getStoredGlassEnabled())
 
   /**
    * @description 初始化主题状态，并立即应用到根节点。
    */
   function initializeTheme() {
     currentTheme.value = applyTheme(getStoredTheme())
+    glassEnabled.value = applyGlassPreference(getStoredGlassEnabled())
   }
 
   /**
@@ -141,14 +171,24 @@ export const useThemeStore = defineStore('theme', () => {
     setTheme(currentTheme.value === 'light' ? 'dark' : 'light')
   }
 
+  /**
+   * @description 设置 Liquid Glass 偏好并持久化。
+   * @param enabled 是否启用 Liquid Glass。
+   */
+  function setGlassEnabled(enabled: boolean) {
+    glassEnabled.value = applyGlassPreference(enabled)
+  }
+
   const isDark = computed(() => currentTheme.value === 'dark')
 
   return {
     currentTheme,
+    glassEnabled,
     isDark,
     initializeTheme,
     setTheme,
     toggleTheme,
+    setGlassEnabled,
     applyTheme: setTheme,
   }
 })

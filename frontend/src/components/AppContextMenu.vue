@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
+import { VustGlassSurface } from '@/components/ui'
 
 // 负责渲染桌面应用的右键菜单容器，并处理点击外部关闭。
 const props = withDefaults(
@@ -51,13 +52,14 @@ onUnmounted(() => {
   <Teleport to="body">
     <div
       v-if="visible"
+      ref="menuRef"
       class="app-context-menu"
       :style="{ top: `${y}px`, left: `${x}px`, zIndex }"
       @click.stop
     >
-      <div ref="menuRef" class="app-context-menu-inner">
+      <VustGlassSurface class="app-context-menu-inner" data-ui="app-context-menu">
         <slot />
-      </div>
+      </VustGlassSurface>
     </div>
   </Teleport>
 </template>
@@ -68,12 +70,10 @@ onUnmounted(() => {
 }
 
 .app-context-menu-inner {
-  background: var(--vdl-bg-glass);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--vdl-border-strong);
+  border-color: var(--vdl-glass-border);
   border-radius: var(--vdl-radius-md);
   padding: var(--vdl-space-2);
-  box-shadow: var(--vdl-shadow-panel);
+  box-shadow: var(--vdl-glass-shadow);
   max-width: 260px;
   width: max-content;
   display: inline-flex;
@@ -104,6 +104,6 @@ onUnmounted(() => {
 }
 
 :deep(.context-menu-btn:not(:disabled):hover) {
-  background-color: var(--vdl-bg-hover);
+  background-color: var(--vdl-glass-control-tint);
 }
 </style>

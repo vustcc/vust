@@ -1793,6 +1793,8 @@ const zh: typeof en = {
         description: '选择应用的外观主题风格。',
         light: '浅色',
         dark: '深色',
+        glassLabel: '液体玻璃',
+        glassDescription: '为桌面、窗口和通用控件启用透明折射材质。',
       },
       upgrade: {
         label: '升级',

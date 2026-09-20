@@ -372,8 +372,4 @@ onBeforeUnmount(() => {
 :deep(.xterm-viewport) {
   background-color: var(--vdl-bg-canvas) !important;
 }
-
-:deep(.xterm-viewport::-webkit-scrollbar-track) {
-  background: var(--vdl-bg-canvas);
-}
 </style>

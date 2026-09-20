@@ -37,30 +37,6 @@ body {
   color: var(--vdl-text-primary);
 }
 
-/* 全局滚动条样式 */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--vdl-scrollbar-thumb) var(--vdl-scrollbar-track);
-}
-
-*::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-*::-webkit-scrollbar-track {
-  background: var(--vdl-scrollbar-track);
-}
-
-*::-webkit-scrollbar-thumb {
-  background: var(--vdl-scrollbar-thumb);
-  border-radius: var(--vdl-radius-pill);
-}
-
-*::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.45);
-}
-
 button,
 input,
 textarea,

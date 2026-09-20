@@ -21,19 +21,27 @@ function resolveToken(prop: string, fallback: string): string {
   return raw || fallback
 }
 
+/** 返回需要以数字传给 Monaco 的公共滚动条尺寸。 */
+export function resolveVdlScrollbarSize(): number {
+  const size = Number.parseFloat(resolveToken('--vdl-scrollbar-size', '10px'))
+  return Number.isFinite(size) ? size : 10
+}
+
 /** 将 rgba/rgb 格式色值转换为 Monaco 需要的 #RRGGBB 或 #RRGGBBAA 格式 */
 function toHex(color: string): string {
   if (color.startsWith('#')) return color
 
-  const rgbaMatch = color.match(
-    /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/,
-  )
+  const rgbaMatch =
+    color.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+%?))?\s*\)/) ??
+    color.match(/rgba?\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+%?))?\s*\)/)
   if (!rgbaMatch) return color
 
   const r = Math.round(Number(rgbaMatch[1]))
   const g = Math.round(Number(rgbaMatch[2]))
   const b = Math.round(Number(rgbaMatch[3]))
-  const a = rgbaMatch[4] !== undefined ? Number(rgbaMatch[4]) : 1
+  const alpha = rgbaMatch[4]
+  const a =
+    alpha === undefined ? 1 : alpha.endsWith('%') ? Number(alpha.slice(0, -1)) / 100 : Number(alpha)
 
   const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
   if (a < 1) {
@@ -61,6 +69,15 @@ export function createSdlDarkTheme(): monaco.editor.IStandaloneThemeData {
   const warning = resolveToken('--vdl-warning', '#ffb547')
   const danger = resolveToken('--vdl-danger', '#ff5e7a')
   const borderSubtle = resolveToken('--vdl-border-subtle', 'rgba(148, 163, 184, 0.12)')
+  const scrollbarThumb = resolveToken('--vdl-scrollbar-thumb', 'rgba(148, 163, 184, 0.32)')
+  const scrollbarThumbHover = resolveToken(
+    '--vdl-scrollbar-thumb-hover',
+    'rgba(174, 190, 208, 0.46)',
+  )
+  const scrollbarThumbActive = resolveToken(
+    '--vdl-scrollbar-thumb-active',
+    'rgba(200, 216, 232, 0.58)',
+  )
 
   return {
     base: 'vs-dark',
@@ -135,9 +152,9 @@ export function createSdlDarkTheme(): monaco.editor.IStandaloneThemeData {
       'editor.findMatchHighlightBackground': '#FFB54720',
 
       // 滚动条
-      'scrollbarSlider.background': 'rgba(148, 163, 184, 0.20)',
-      'scrollbarSlider.hoverBackground': 'rgba(148, 163, 184, 0.32)',
-      'scrollbarSlider.activeBackground': 'rgba(148, 163, 184, 0.40)',
+      'scrollbarSlider.background': toHex(scrollbarThumb),
+      'scrollbarSlider.hoverBackground': toHex(scrollbarThumbHover),
+      'scrollbarSlider.activeBackground': toHex(scrollbarThumbActive),
 
       // Minimap
       'minimap.background': toHex(bgMuted),
@@ -169,6 +186,15 @@ export function createSdlLightTheme(): monaco.editor.IStandaloneThemeData {
   const textMuted = resolveToken('--vdl-text-muted', '#6c7a95')
   const primary = resolveToken('--vdl-primary', '#1d63ed')
   const borderSubtle = resolveToken('--vdl-border-subtle', 'rgba(13, 30, 55, 0.08)')
+  const scrollbarThumb = resolveToken('--vdl-scrollbar-thumb', 'rgba(108, 122, 149, 0.3)')
+  const scrollbarThumbHover = resolveToken(
+    '--vdl-scrollbar-thumb-hover',
+    'rgba(86, 105, 139, 0.46)',
+  )
+  const scrollbarThumbActive = resolveToken(
+    '--vdl-scrollbar-thumb-active',
+    'rgba(65, 87, 126, 0.58)',
+  )
 
   return {
     base: 'vs',
@@ -196,6 +222,9 @@ export function createSdlLightTheme(): monaco.editor.IStandaloneThemeData {
       'editorLineNumber.activeForeground': toHex(primary),
       'editorCursor.foreground': toHex(primary),
       'editorIndentGuide.background': toHex(borderSubtle),
+      'scrollbarSlider.background': toHex(scrollbarThumb),
+      'scrollbarSlider.hoverBackground': toHex(scrollbarThumbHover),
+      'scrollbarSlider.activeBackground': toHex(scrollbarThumbActive),
       'minimap.background': toHex(bgMuted),
       'editorWidget.background': toHex(bgCard),
       'editorWidget.border': toHex(borderSubtle),

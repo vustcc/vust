@@ -158,7 +158,11 @@ watch(
     await nextTick()
     suiteBridge = createSuiteHostBridge({
       iframe: () => iframeRef.value,
-      theme: () => themeStore.currentTheme,
+      theme: () => ({
+        theme: themeStore.currentTheme,
+        resolvedTheme: themeStore.currentTheme,
+        glassEnabled: themeStore.glassEnabled,
+      }),
       locale: resolveSuiteLocale,
       onReady: (payload) => {
         supportsWindowFocus.value = payload.capabilities.includes('window')
@@ -185,7 +189,7 @@ watch(
 )
 
 watch(
-  () => themeStore.currentTheme,
+  () => [themeStore.currentTheme, themeStore.glassEnabled] as const,
   () => {
     suiteBridge?.sendTheme()
   },

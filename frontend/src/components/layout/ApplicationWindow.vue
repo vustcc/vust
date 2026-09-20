@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useWindowManagerStore, type WindowInstance } from '../../stores/window-manager'
 import { useToastStore } from '../../stores/toast'
 import AppIcon from '../icons/AppIcon.vue'
+import { VustGlassSurface } from '@/components/ui'
 
 const props = defineProps<{
   windowData: WindowInstance // 从 Store 传递进来的窗口数据
@@ -341,6 +342,7 @@ onUnmounted(() => {
   <div
     v-show="!windowData.isMinimized"
     class="window-container"
+    data-ui="application-window"
     :class="{
       'window-focused': windowData.zIndex === store.maxZIndex,
       'window-maximized': windowData.isMaximized,
@@ -352,6 +354,8 @@ onUnmounted(() => {
     @mousedown="handleFocus"
     @contextmenu.capture="handleWindowContextMenu"
   >
+    <VustGlassSurface class="window-glass-layer" aria-hidden="true" data-slot="glass-layer" />
+
     <div
       class="window-header"
       data-slot="header"
@@ -445,14 +449,23 @@ onUnmounted(() => {
   position: absolute;
   min-width: 300px;
   min-height: 200px;
-  background-color: var(--vdl-bg-panel);
   border-radius: var(--vdl-radius-lg);
   box-shadow: var(--vdl-shadow-window);
-  border: 1px solid var(--vdl-border-default);
+  border-color: var(--vdl-glass-border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   transition: box-shadow 0.1s;
+}
+
+.window-glass-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  border-color: var(--vdl-glass-border);
+  box-shadow: none;
+  pointer-events: none;
 }
 
 .window-dragging,
@@ -467,15 +480,18 @@ onUnmounted(() => {
 
 /* 焦点状态 */
 .window-focused {
-  border-color: var(--vdl-border-brand);
   box-shadow: var(--vdl-shadow-brand), var(--vdl-shadow-window);
+}
+
+.window-focused .window-glass-layer {
+  border-color: var(--vdl-border-brand);
 }
 
 /* 标题栏样式 */
 .window-header {
   height: var(--vdl-window-header-height);
   flex-shrink: 0;
-  background-color: var(--vdl-bg-muted);
+  background: color-mix(in srgb, var(--vdl-bg-muted) var(--vdl-glass-header-opacity), transparent);
   border-bottom: 1px solid var(--vdl-border-subtle);
   display: flex;
   align-items: center;
@@ -483,6 +499,7 @@ onUnmounted(() => {
   cursor: grab; /* 拖动光标 */
   padding: 0 var(--vdl-space-2);
   position: relative; /* 确保标题栏可以拖动 */
+  z-index: 1;
 }
 
 .window-title {
@@ -571,11 +588,17 @@ onUnmounted(() => {
 /* 窗口内容 */
 .window-content {
   position: relative;
+  z-index: 1;
   flex-grow: 1;
   overflow: auto; /* 允许应用内容滚动 */
   /* 确保应用组件可以撑满内容区 */
   display: flex;
   flex-direction: column;
+  background: var(--vdl-bg-panel);
+}
+
+:global([data-glass='disabled']) .window-header {
+  background: var(--vdl-bg-muted);
 }
 
 .window-operation-shield {

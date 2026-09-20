@@ -6,7 +6,7 @@
 
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { VustSelect } from '@/components/ui'
+import { VustSelect, VustSwitch } from '@/components/ui'
 import { useThemeStore } from '@/stores/theme'
 import SettingsSectionPanel from './SettingsSectionPanel.vue'
 
@@ -40,6 +40,11 @@ const updateValue = (nextValue: string | number | boolean | null) => {
     themeStore.setTheme(nextValue)
   }
 }
+
+/** 保存 Liquid Glass 开关。 */
+const updateGlass = (enabled: boolean) => {
+  themeStore.setGlassEnabled(enabled)
+}
 </script>
 
 <template>
@@ -55,6 +60,17 @@ const updateValue = (nextValue: string | number | boolean | null) => {
       data-ui="personalization-select"
       @update:model-value="updateValue"
     />
+    <div v-if="kind === 'theme'" class="material-setting" data-ui="glass-preference">
+      <div class="material-copy">
+        <strong>{{ t('app.settings.theme.glassLabel') }}</strong>
+        <span>{{ t('app.settings.theme.glassDescription') }}</span>
+      </div>
+      <VustSwitch
+        :model-value="themeStore.glassEnabled"
+        :aria-label="t('app.settings.theme.glassLabel')"
+        @update:model-value="updateGlass"
+      />
+    </div>
   </SettingsSectionPanel>
 </template>
 
@@ -67,5 +83,32 @@ const updateValue = (nextValue: string | number | boolean | null) => {
 
 .select-control {
   width: min(100%, 240px);
+}
+
+.material-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vdl-space-4);
+  margin-top: var(--vdl-space-5);
+  padding-top: var(--vdl-space-4);
+  border-top: 1px solid var(--vdl-border-subtle);
+}
+
+.material-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--vdl-space-1);
+}
+
+.material-copy strong {
+  color: var(--vdl-text-primary);
+  font-size: var(--vdl-font-body-sm);
+}
+
+.material-copy span {
+  color: var(--vdl-text-muted);
+  font-size: var(--vdl-font-caption);
 }
 </style>

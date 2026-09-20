@@ -14,6 +14,7 @@ import {
   VDL_THEME_LIGHT,
   createSdlDarkTheme,
   createSdlLightTheme,
+  resolveVdlScrollbarSize,
 } from './vdl-monaco-theme'
 
 setupMonacoWorkers()
@@ -329,10 +330,10 @@ function createEditor() {
     scrollbar: {
       handleMouseWheel: !props.wheelFocusOnClick,
       alwaysConsumeMouseWheel: !props.wheelFocusOnClick,
-      verticalScrollbarSize: 8,
-      horizontalScrollbarSize: 8,
-      verticalSliderSize: 8,
-      horizontalSliderSize: 8,
+      verticalScrollbarSize: resolveVdlScrollbarSize(),
+      horizontalScrollbarSize: resolveVdlScrollbarSize(),
+      verticalSliderSize: resolveVdlScrollbarSize(),
+      horizontalSliderSize: resolveVdlScrollbarSize(),
     },
     contextmenu: true,
     fixedOverflowWidgets: props.fixedOverflowWidgets,

@@ -1829,6 +1829,9 @@ const en = {
         description: 'Select appearance style.',
         light: 'Light',
         dark: 'Dark',
+        glassLabel: 'Liquid Glass',
+        glassDescription:
+          'Enable translucent refractive material for the desktop, windows, and controls.',
       },
       upgrade: {
         label: 'Upgrade',

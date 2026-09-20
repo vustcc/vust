@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import type { AuthBody } from '@/api/interface'
 import http from '@/api'
 import VustIcon from '@/components/icons/VustIcon.vue'
-import { VustSelect } from '@/components/ui'
+import { VustButton, VustGlassSurface, VustInput, VustSelect } from '@/components/ui'
 import { markAuthState } from '@/router'
 import { useThemeStore } from '@/stores/theme'
 import { versionStaticAsset } from '@/utils/static-assets'
@@ -132,7 +132,9 @@ onMounted(() => {
 <template>
   <div class="login-container" data-page="login">
     <div class="login-preferences" data-ui="login-preferences">
-      <a
+      <VustGlassSurface
+        as="a"
+        profile="control"
         class="preference-button github-link"
         href="https://github.com/vustcc/vust"
         target="_blank"
@@ -142,8 +144,10 @@ onMounted(() => {
         data-ui="login-github-link"
       >
         <VustIcon name="github" :size="20" decorative />
-      </a>
-      <button
+      </VustGlassSurface>
+      <VustGlassSurface
+        as="button"
+        profile="control"
         type="button"
         class="preference-button theme-toggle"
         :aria-label="themeButtonLabel"
@@ -153,7 +157,7 @@ onMounted(() => {
         @click="toggleTheme"
       >
         <VustIcon :name="themeIcon" :size="18" decorative />
-      </button>
+      </VustGlassSurface>
       <VustSelect
         class="language-select"
         :model-value="locale"
@@ -164,7 +168,7 @@ onMounted(() => {
       />
     </div>
 
-    <div class="login-card" data-ui="login-card" aria-labelledby="login-title">
+    <VustGlassSurface class="login-card" data-ui="login-card" aria-labelledby="login-title">
       <div class="login-header" data-slot="header">
         <h1 id="login-title" class="visually-hidden">{{ $t('login.brand') }}</h1>
         <img
@@ -186,28 +190,28 @@ onMounted(() => {
         <div class="form-group">
           <label for="username">{{ $t('login.username') }}</label>
           <div class="input-wrapper">
-            <input
+            <VustInput
               id="username"
               type="text"
               v-model="username"
-              class="input"
+              class="login-input"
               :placeholder="$t('login.usernamePlaceholder')"
               autocomplete="off"
-              required
+              @keydown.enter.prevent="handleLogin"
             />
           </div>
         </div>
         <div class="form-group">
           <label for="password">{{ $t('login.password') }}</label>
           <div class="input-wrapper">
-            <input
+            <VustInput
               id="password"
               type="password"
               v-model="password"
-              class="input"
+              class="login-input"
               :placeholder="$t('login.passwordPlaceholder')"
               autocomplete="new-password"
-              required
+              @keydown.enter.prevent="handleLogin"
             />
           </div>
         </div>
@@ -228,10 +232,16 @@ onMounted(() => {
                 required
               />
             </div>
-            <button type="button" class="captcha-image-button" @click="refreshCaptcha">
+            <VustGlassSurface
+              as="button"
+              profile="control"
+              type="button"
+              class="captcha-image-button"
+              @click="refreshCaptcha"
+            >
               <img v-if="captchaImage" :src="captchaImage" alt="" class="captcha-image" />
               <span v-else>{{ $t('login.refreshCaptcha') }}</span>
-            </button>
+            </VustGlassSurface>
           </div>
         </div>
 
@@ -240,15 +250,21 @@ onMounted(() => {
           <span class="error-text">{{ errorMessage }}</span>
         </div>
 
-        <button type="submit" class="login-button" data-ui="login-submit" :disabled="locked">
+        <VustButton
+          class="login-button"
+          type="primary"
+          data-ui="login-submit"
+          :disabled="locked"
+          @click="handleLogin"
+        >
           {{ $t('login.loginButton') }}
-        </button>
+        </VustButton>
       </form>
 
       <div class="login-footer" data-slot="footer">
         <p class="copyright">© 2026 Vust. All Rights Reserved.</p>
       </div>
-    </div>
+    </VustGlassSurface>
   </div>
 </template>
 
@@ -300,8 +316,7 @@ onMounted(() => {
   height: 36px;
   flex: none;
   color: var(--vdl-text-secondary);
-  background: var(--vdl-bg-input);
-  border: 1px solid var(--vdl-border-default);
+  border-color: var(--vdl-glass-border);
   border-radius: var(--vdl-radius-md);
   font-family: var(--vdl-font-family);
   font-size: var(--vdl-font-body-sm);
@@ -316,7 +331,7 @@ onMounted(() => {
 .preference-button:hover {
   color: var(--vdl-text-primary);
   background: var(--vdl-bg-hover);
-  border-color: var(--vdl-border-strong);
+  border-color: var(--vdl-glass-border-hover);
 }
 
 .preference-button:focus-visible {
@@ -338,23 +353,13 @@ onMounted(() => {
 .login-card {
   width: min(100%, 420px);
   padding: 44px 40px 36px;
-  background: color-mix(in srgb, var(--vdl-bg-panel) 92%, transparent);
-  border: 1px solid var(--vdl-border-strong);
+  border-color: var(--vdl-glass-border);
   border-radius: var(--vdl-radius-lg);
   box-shadow: var(--vdl-shadow-window);
   display: flex;
   flex-direction: column;
   gap: 32px;
   position: relative;
-}
-
-.login-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .login-header {
@@ -411,6 +416,10 @@ onMounted(() => {
   position: relative;
 }
 
+.login-input :deep(.vl-input) {
+  height: 44px;
+}
+
 .input {
   width: 100%;
   height: 44px;
@@ -459,7 +468,7 @@ onMounted(() => {
 .captcha-image-button {
   height: 44px;
   padding: 0;
-  border: 1px solid var(--vdl-border-default);
+  border: 1px solid var(--vdl-glass-border);
   border-radius: var(--vdl-radius-md);
   background: var(--vdl-bg-input);
   color: var(--vdl-text-secondary);
@@ -496,27 +505,6 @@ onMounted(() => {
   width: 100%;
   height: 44px;
   margin-top: 12px;
-  background: var(--vdl-primary);
-  color: var(--vdl-text-inverse);
-  border: none;
-  border-radius: var(--vdl-radius-md);
-  font-size: var(--vdl-font-body);
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.login-button:hover {
-  background: var(--vdl-primary-hover);
-}
-
-.login-button:active {
-  transform: translateY(0);
-}
-
-.login-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
 }
 
 .login-footer {

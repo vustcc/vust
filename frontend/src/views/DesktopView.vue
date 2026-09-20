@@ -5,6 +5,7 @@ import type { AppId } from '@/apps/registry'
 import ApplicationWindow from '../components/layout/ApplicationWindow.vue'
 import AppContextMenu from '../components/AppContextMenu.vue'
 import AppIcon from '../components/icons/AppIcon.vue'
+import { VustGlassSurface } from '@/components/ui'
 
 const store = useWindowManagerStore()
 const desktopContextMenu = ref({
@@ -25,6 +26,8 @@ const dragState = ref({
   initialIconX: 0,
   initialIconY: 0,
 })
+const hoveredShortcutId = ref<AppId | null>(null)
+const focusedShortcutId = ref<AppId | null>(null)
 
 const HEADER_HEIGHT = 40
 const GRID_SIZE_X = 100
@@ -190,6 +193,18 @@ function handleDragEnd() {
 }
 
 /**
+ * @description 判断桌面图标是否应显示交互态玻璃材质。
+ * @param id 目标应用 ID。
+ */
+function isDesktopGlassActive(id: AppId) {
+  return (
+    hoveredShortcutId.value === id ||
+    focusedShortcutId.value === id ||
+    dragState.value.draggingId === id
+  )
+}
+
+/**
  * @file DesktopView.vue
  * @description 桌面背景视图，包含应用图标和所有活动的窗口实例。
  */
@@ -204,12 +219,17 @@ function handleDragEnd() {
       @dragover="handleDragOver"
       @drop="handleLayerDrop"
     >
-      <div
+      <VustGlassSurface
         v-for="shortcut in store.desktopShortcuts"
         :key="shortcut.appId"
         class="desktop-icon"
+        as="button"
+        profile="control"
+        :glass="isDesktopGlassActive(shortcut.appId) ? undefined : false"
+        type="button"
         :class="{
           'is-dragging': dragState.draggingId === shortcut.appId,
+          'is-glass-idle': !isDesktopGlassActive(shortcut.appId),
         }"
         :style="{
           left: shortcut.x + 'px',
@@ -217,7 +237,12 @@ function handleDragEnd() {
         }"
         data-ui="desktop-icon"
         :data-slot="shortcut.appId"
+        @mouseenter="hoveredShortcutId = shortcut.appId"
+        @mouseleave="hoveredShortcutId = null"
+        @focus="focusedShortcutId = shortcut.appId"
+        @blur="focusedShortcutId = null"
         @dblclick="openDesktopApp(shortcut.appId)"
+        @keydown.enter.prevent="openDesktopApp(shortcut.appId)"
         @contextmenu.prevent.stop="handleDesktopIconContextMenu($event, shortcut.appId)"
         @dragstart="handleDragStart($event, shortcut.appId)"
         @dragover="handleDragOver"
@@ -241,7 +266,7 @@ function handleDragEnd() {
             ? store.resolveAppTitle(store.availableApps[shortcut.appId])
             : shortcut.appId
         }}</span>
-      </div>
+      </VustGlassSurface>
     </div>
 
     <ApplicationWindow v-for="window in store.openWindows" :key="window.id" :window-data="window" />
@@ -300,25 +325,44 @@ function handleDragEnd() {
   z-index: 1; /* 确保图标可以被点击 */
 }
 
-.desktop-icon {
+.desktop-icon.desktop-icon {
   position: absolute;
   width: 90px;
+  height: 80px;
+  padding: var(--vdl-space-2);
+  appearance: none;
+  color: inherit;
   cursor: pointer;
   text-align: center;
   user-select: none;
   transition:
-    background-color 0.1s,
+    border-color 0.1s,
     transform 0.05s;
+  border-color: transparent;
   border-radius: 8px;
 }
 
-.desktop-icon.is-dragging {
-  opacity: 0.55;
+.desktop-icon.desktop-icon.is-glass-idle {
+  background-color: transparent;
+  background-image: none;
+  border-color: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
-.desktop-icon:hover {
-  background-color: var(--vdl-bg-hover);
-  outline: 1px solid var(--vdl-border-brand);
+.desktop-icon.desktop-icon.is-dragging {
+  opacity: 0.55;
+  border-color: var(--vdl-glass-border-hover);
+}
+
+.desktop-icon.desktop-icon:hover {
+  border-color: var(--vdl-glass-border-hover);
+}
+
+.desktop-icon.desktop-icon:focus-visible {
+  border-color: var(--vdl-glass-border-hover);
+  outline: none;
+  box-shadow: var(--vdl-focus-ring);
 }
 
 .icon-image {

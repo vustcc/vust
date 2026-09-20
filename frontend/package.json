@@ -22,9 +22,9 @@
   },
   "dependencies": {
     "@vustcc/icons": "0.1.0-alpha.2",
-    "@vustcc/suite-sdk": "0.1.0-alpha.1",
-    "@vustcc/tokens": "0.1.0-alpha.1",
-    "@vustcc/vue": "0.1.0-alpha.1",
+    "@vustcc/suite-sdk": "0.1.0-alpha.2",
+    "@vustcc/tokens": "0.1.0-alpha.2",
+    "@vustcc/vue": "0.1.0-alpha.2",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "axios": "^1.20.0",
@@ -57,10 +57,5 @@
     "vite-plugin-vue-devtools": "^8.1.1",
     "vitest": "^5.0.0",
     "vue-tsc": "^3.2.7"
-  },
-  "pnpm": {
-    "overrides": {
-      "@vustcc/icons": "0.1.0-alpha.2"
-    }
   }
 }

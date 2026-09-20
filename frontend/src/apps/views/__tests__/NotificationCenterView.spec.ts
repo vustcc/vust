@@ -132,11 +132,13 @@ describe('NotificationCenterView', () => {
     await flushPromises()
     expect(wrapper.get('[data-ui="selection-bar"] .vl-selection-count').text()).toBe('1')
     expect(wrapper.get('[data-ui="table-row-selection"] input').element.checked).toBe(true)
+    expect(wrapper.findAll('tbody .vl-table-row.is-selected')).toHaveLength(1)
 
     await wrapper.get('[data-ui="clear-selection"]').trigger('click')
     await flushPromises()
     expect(wrapper.find('[data-ui="selection-bar"]').exists()).toBe(false)
     expect(wrapper.get('[data-ui="table-row-selection"] input').element.checked).toBe(false)
+    expect(wrapper.findAll('tbody .vl-table-row.is-selected')).toHaveLength(0)
     wrapper.unmount()
   })
 

@@ -623,9 +623,7 @@ onBeforeUnmount(stopUpgradeRefreshTimer)
 <template>
   <div class="settings" data-page="settings" data-vust-app="settings">
     <div class="sidebar" data-slot="navigation">
-      <VustCard class="nav-card" shadow="never" full-height>
-        <VustMenu v-model="activeMenu" :items="menuItems" />
-      </VustCard>
+      <VustMenu v-model="activeMenu" class="settings-menu" :items="menuItems" />
     </div>
 
     <div class="content" data-slot="content">
@@ -1043,8 +1041,13 @@ onBeforeUnmount(stopUpgradeRefreshTimer)
   min-height: 0;
 }
 
-.nav-card :deep(.vl-card-content) {
+.settings-menu {
+  height: 100%;
+  box-sizing: border-box;
   padding: var(--vdl-space-4) var(--vdl-space-3);
+  border: 1px solid var(--vdl-glass-border);
+  border-radius: var(--vdl-radius-lg);
+  box-shadow: var(--vdl-glass-shadow);
   overflow-y: auto;
 }
 

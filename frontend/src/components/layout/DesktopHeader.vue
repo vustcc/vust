@@ -12,6 +12,7 @@ import VustTooltip from '../ui/VustTooltip.vue'
 import AppContextMenu from '../AppContextMenu.vue'
 import AppIcon from '../icons/AppIcon.vue'
 import VustIcon from '../icons/VustIcon.vue'
+import { VustGlassSurface } from '@/components/ui'
 import http from '@/api'
 import { useI18n } from 'vue-i18n'
 import { useNodeStore } from '../../stores/node'
@@ -23,6 +24,8 @@ const notificationCenterStore = useNotificationCenterStore()
 const confirmationModal = useConfirmationModalStore()
 const router = useRouter()
 const appLibraryOpen = ref(false)
+const hoveredLibraryAppId = ref<AppId | null>(null)
+const focusedLibraryAppId = ref<AppId | null>(null)
 const libraryContextMenu = ref({
   visible: false,
   x: 0,
@@ -184,14 +187,17 @@ function handleAppIconClick(id: string) {
 }
 
 function toggleAppLibrary() {
-  appLibraryOpen.value = !appLibraryOpen.value
-  if (!appLibraryOpen.value) {
-    closeLibraryContextMenu()
+  if (appLibraryOpen.value) {
+    closeAppLibrary()
+    return
   }
+  appLibraryOpen.value = true
 }
 
 function closeAppLibrary() {
   appLibraryOpen.value = false
+  hoveredLibraryAppId.value = null
+  focusedLibraryAppId.value = null
   closeLibraryContextMenu()
 }
 
@@ -235,13 +241,26 @@ function isAppOnDesktop(id: AppId | null): boolean {
 }
 
 /**
+ * @description 判断应用库条目是否应显示交互态玻璃材质。
+ * @param id 目标应用 ID。
+ */
+function isLibraryGlassActive(id: AppId) {
+  return hoveredLibraryAppId.value === id || focusedLibraryAppId.value === id
+}
+
+/**
  * @file DesktopHeader.vue
  * @description 桌面布局的上部菜单栏组件。
  */
 </script>
 
 <template>
-  <div class="header-content" data-slot="header" @contextmenu.prevent>
+  <VustGlassSurface
+    class="header-content"
+    data-ui="desktop-header"
+    data-slot="header"
+    @contextmenu.prevent
+  >
     <div class="header-center">
       <div class="nav-home" :class="{ 'nav-home-separated': store.openWindows.length > 0 }">
         <VustTooltip :text="$t('desktop.header.showDesktop')" position="bottom">
@@ -339,7 +358,7 @@ function isAppOnDesktop(id: AppId | null): boolean {
         class="library-panel-overlay"
         @click="handleOverlayBackgroundClick"
       >
-        <div class="library-panel-wrapper">
+        <VustGlassSurface class="library-panel-wrapper" data-ui="app-library-panel">
           <div class="library-panel-header" data-slot="header" @click.stop>
             <div>{{ $t('desktop.header.appLibrary') }}</div>
           </div>
@@ -347,11 +366,19 @@ function isAppOnDesktop(id: AppId | null): boolean {
             <section class="library-section" data-ui="builtin-app-group">
               <div class="library-section-title">{{ $t('desktop.header.builtinApps') }}</div>
               <div class="library-grid">
-                <button
+                <VustGlassSurface
                   v-for="app in builtinAppList"
                   :key="app.id"
+                  as="button"
+                  profile="control"
+                  :glass="isLibraryGlassActive(app.id) ? undefined : false"
                   type="button"
                   class="library-item"
+                  :class="{ 'is-glass-idle': !isLibraryGlassActive(app.id) }"
+                  @mouseenter="hoveredLibraryAppId = app.id"
+                  @mouseleave="hoveredLibraryAppId = null"
+                  @focus="focusedLibraryAppId = app.id"
+                  @blur="focusedLibraryAppId = null"
                   @click.stop="handleLibraryAppClick(app.id)"
                   @contextmenu.prevent.stop="openLibraryContextMenu($event, app.id)"
                 >
@@ -363,7 +390,7 @@ function isAppOnDesktop(id: AppId | null): boolean {
                     :decorative="false"
                   />
                   <span class="library-title">{{ app.title }}</span>
-                </button>
+                </VustGlassSurface>
               </div>
             </section>
             <section
@@ -373,11 +400,19 @@ function isAppOnDesktop(id: AppId | null): boolean {
             >
               <div class="library-section-title">{{ $t('desktop.header.suiteApps') }}</div>
               <div class="library-grid">
-                <button
+                <VustGlassSurface
                   v-for="app in suiteAppList"
                   :key="app.id"
+                  as="button"
+                  profile="control"
+                  :glass="isLibraryGlassActive(app.id) ? undefined : false"
                   type="button"
                   class="library-item"
+                  :class="{ 'is-glass-idle': !isLibraryGlassActive(app.id) }"
+                  @mouseenter="hoveredLibraryAppId = app.id"
+                  @mouseleave="hoveredLibraryAppId = null"
+                  @focus="focusedLibraryAppId = app.id"
+                  @blur="focusedLibraryAppId = null"
                   @click.stop="handleLibraryAppClick(app.id)"
                   @contextmenu.prevent.stop="openLibraryContextMenu($event, app.id)"
                 >
@@ -389,11 +424,11 @@ function isAppOnDesktop(id: AppId | null): boolean {
                     :decorative="false"
                   />
                   <span class="library-title">{{ app.title }}</span>
-                </button>
+                </VustGlassSurface>
               </div>
             </section>
           </div>
-        </div>
+        </VustGlassSurface>
       </div>
     </Teleport>
     <AppContextMenu
@@ -419,14 +454,15 @@ function isAppOnDesktop(id: AppId | null): boolean {
         {{ $t('desktop.header.contextMenu.addToDesktop') }}
       </button>
     </AppContextMenu>
-  </div>
+  </VustGlassSurface>
 </template>
 <style scoped>
 .header-content {
   height: var(--vdl-header-height);
   flex-shrink: 0;
-  background-color: var(--vdl-bg-hover);
-  backdrop-filter: blur(8px);
+  border-width: 0 0 1px;
+  border-color: var(--vdl-glass-border);
+  border-radius: 0;
   color: var(--vdl-text-primary);
   padding: 0 var(--vdl-space-3);
   display: flex;
@@ -475,7 +511,7 @@ function isAppOnDesktop(id: AppId | null): boolean {
 /* 桌面按钮 */
 .desktop-btn {
   background: none;
-  border: none;
+  border: 1px solid transparent;
   color: inherit;
   font-size: 18px;
   cursor: pointer;
@@ -487,11 +523,23 @@ function isAppOnDesktop(id: AppId | null): boolean {
 
 .desktop-btn:hover {
   background-color: var(--vdl-bg-hover);
+  border-color: var(--vdl-glass-border-hover);
+}
+
+.desktop-btn:focus-visible,
+.library-btn:focus-visible,
+.nav-app:focus-visible,
+.logout-btn:focus-visible,
+.notification-center-btn:focus-visible,
+.library-item:focus-visible {
+  border-color: var(--vdl-glass-border-hover);
+  outline: none;
+  box-shadow: var(--vdl-focus-ring);
 }
 
 .library-btn {
   background: none;
-  border: none;
+  border: 1px solid transparent;
   color: inherit;
   font-size: 18px;
   cursor: pointer;
@@ -504,6 +552,7 @@ function isAppOnDesktop(id: AppId | null): boolean {
 
 .library-btn:hover {
   background-color: var(--vdl-bg-hover);
+  border-color: var(--vdl-glass-border-hover);
 }
 
 /* 应用图标 */
@@ -517,10 +566,12 @@ function isAppOnDesktop(id: AppId | null): boolean {
   cursor: pointer;
   position: relative;
   transition: background-color 0.2s;
+  border: 1px solid transparent;
 }
 
 .nav-app:hover {
   background-color: var(--vdl-bg-hover);
+  border-color: var(--vdl-glass-border-hover);
 }
 
 .nav-app-icon {
@@ -550,8 +601,8 @@ function isAppOnDesktop(id: AppId | null): boolean {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(0, 200, 255, 0.05);
-  border: 1px solid rgba(0, 200, 255, 0.2);
+  background: var(--vdl-glass-control-tint);
+  border: 1px solid var(--vdl-glass-border);
   padding: 4px 12px;
   border-radius: var(--vdl-radius-pill);
   color: var(--vdl-primary);
@@ -566,15 +617,15 @@ function isAppOnDesktop(id: AppId | null): boolean {
 }
 
 .node-selector-capsule.clickable:hover {
-  background: rgba(0, 200, 255, 0.12);
-  border-color: var(--vdl-primary);
-  box-shadow: 0 0 10px rgba(0, 200, 255, 0.15);
+  background: var(--vdl-bg-hover);
+  border-color: var(--vdl-glass-border-hover);
+  box-shadow: var(--vdl-shadow-brand);
 }
 
 .node-selector-capsule.active-open {
-  background: rgba(0, 200, 255, 0.16);
-  border-color: var(--vdl-primary);
-  box-shadow: 0 0 12px rgba(0, 200, 255, 0.24);
+  background: var(--vdl-bg-active);
+  border-color: var(--vdl-glass-border-hover);
+  box-shadow: var(--vdl-shadow-brand);
 }
 
 .node-selector-capsule.node-unavailable {
@@ -738,7 +789,7 @@ function isAppOnDesktop(id: AppId | null): boolean {
 .logout-btn,
 .notification-center-btn {
   background: none;
-  border: none;
+  border: 1px solid transparent;
   color: inherit;
   font-size: 18px;
   cursor: pointer;
@@ -756,6 +807,7 @@ function isAppOnDesktop(id: AppId | null): boolean {
 .logout-btn:hover,
 .notification-center-btn:hover {
   background-color: var(--vdl-bg-hover);
+  border-color: var(--vdl-glass-border-hover);
 }
 
 .notification-badge {
@@ -790,10 +842,9 @@ function isAppOnDesktop(id: AppId | null): boolean {
 .library-panel-wrapper {
   width: calc(100% - 40px);
   height: calc(100% - 40px);
-  background-color: var(--vdl-bg-panel);
-  border-radius: 0;
-  border: none;
-  box-shadow: none;
+  border-radius: var(--vdl-radius-lg);
+  border-color: var(--vdl-glass-border);
+  box-shadow: var(--vdl-glass-shadow);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -808,6 +859,7 @@ function isAppOnDesktop(id: AppId | null): boolean {
   padding: 16px 24px;
   color: var(--vdl-text-primary);
   border-bottom: 1px solid var(--vdl-border-subtle);
+  background: color-mix(in srgb, var(--vdl-bg-muted) var(--vdl-glass-header-opacity), transparent);
 }
 
 .library-scroll {
@@ -837,8 +889,7 @@ function isAppOnDesktop(id: AppId | null): boolean {
 }
 
 .library-item {
-  background: var(--vdl-bg-muted);
-  border: 1px solid var(--vdl-border-subtle);
+  border-color: transparent;
   border-radius: 8px;
   width: 120px;
   height: 120px;
@@ -856,9 +907,16 @@ function isAppOnDesktop(id: AppId | null): boolean {
     background-color 0.2s;
 }
 
+.library-item.library-item.is-glass-idle {
+  background-color: transparent;
+  background-image: none;
+  border-color: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
 .library-item:hover {
-  border-color: var(--vdl-primary);
-  background-color: var(--vdl-bg-hover);
+  border-color: var(--vdl-glass-border-hover);
 }
 
 .library-icon {
