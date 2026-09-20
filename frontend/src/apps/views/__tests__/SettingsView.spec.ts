@@ -174,6 +174,29 @@ describe('SettingsView', () => {
     expect(wrapper.findComponent({ name: 'NetworkSettings' }).exists()).toBe(true)
   })
 
+  it('网络设置未保存时不阻止关闭设置窗口', async () => {
+    const NetworkStub = defineComponent({
+      name: 'NetworkSettings',
+      emits: ['busyChange', 'dirtyChange'],
+      setup(_, { emit }) {
+        onMounted(() => {
+          emit('busyChange', false)
+          emit('dirtyChange', true)
+        })
+      },
+      template: '<div data-page="settings-network-stub" />',
+    })
+    const wrapper = await mountSettings({ NetworkSettings: NetworkStub })
+
+    await wrapper.get('[data-menu-key="network"]').trigger('click')
+    await flushPromises()
+
+    expect(windowManager.updateWindowRuntimeState).toHaveBeenLastCalledWith(
+      'settings-test',
+      expect.objectContaining({ busy: false, dirty: false, blockLevel: 'open' }),
+    )
+  })
+
   it('快速切换模块后已停用分区的加载状态仍会正常收敛', async () => {
     let resolveAbout!: () => void
     const aboutFinished = new Promise<void>((resolve) => {

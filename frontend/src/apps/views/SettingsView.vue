@@ -46,7 +46,6 @@ const confirmationStore = useConfirmationModalStore()
 const appVersion = import.meta.env.VITE_APP_VERSION ?? 'unknown'
 
 const networkBusy = ref(false)
-const networkDirty = ref(false)
 const monitoringBusy = ref(false)
 const securityLoading = ref(false)
 const securitySaving = ref(false)
@@ -114,17 +113,15 @@ const settingsBusy = computed(
     isValidating.value ||
     upgradeStarting.value,
 )
-const settingsDirty = computed(() => networkDirty.value)
-
 watch(
-  [settingsBusy, settingsDirty],
-  ([busy, dirty]) => {
+  settingsBusy,
+  (busy) => {
     if (!props.windowId) return
     windowStore.updateWindowRuntimeState(props.windowId, {
       busy,
-      dirty,
+      dirty: false,
       allowsNodeSwitch: false,
-      blockLevel: busy ? 'busy' : dirty ? 'dirty' : 'open',
+      blockLevel: busy ? 'busy' : 'open',
       blockReason: busy ? t('app.settings.guardBusy') : t('app.settings.guardOpen'),
     })
   },
@@ -640,7 +637,6 @@ onBeforeUnmount(stopUpgradeRefreshTimer)
           v-if="activeMenu === 'network'"
           class="section"
           @busy-change="networkBusy = $event"
-          @dirty-change="networkDirty = $event"
         />
       </KeepAlive>
 
