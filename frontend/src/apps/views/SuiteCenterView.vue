@@ -17,7 +17,7 @@ import { useNodeStore } from '@/stores/node'
 import SuiteCard from './suite-center/SuiteCard.vue'
 import SuiteDangerDialogs from './suite-center/SuiteDangerDialogs.vue'
 import SuiteDetailDrawer from './suite-center/SuiteDetailDrawer.vue'
-import SuiteImportDialog from './suite-center/SuiteImportDialog.vue'
+import SuiteImportWorkspace from './suite-center/SuiteImportWorkspace.vue'
 import { useSuiteCenter } from './suite-center/useSuiteCenter'
 
 type SuiteCategory = 'all' | 'tools' | 'other'
@@ -58,7 +58,7 @@ const activeCategory = ref<SuiteCategory>('all')
 const statusFilter = ref<SuiteStatusFilter>('all')
 const searchQuery = ref('')
 const selectedSuiteId = ref('')
-const importDialogVisible = ref(false)
+const viewMode = ref<'list' | 'import'>('list')
 const deleteTarget = ref<SuiteCatalogItem | null>(null)
 const uninstallTarget = ref<SuiteCardModel | null>(null)
 
@@ -168,9 +168,22 @@ function closeDetail() {
   selectedSuiteId.value = ''
 }
 
+/** 打开套件导入工作台并关闭可能存在的详情。 */
+function openImport() {
+  closeDetail()
+  viewMode.value = 'import'
+}
+
+/** 在未上传时返回套件列表。 */
+function closeImport() {
+  if (activeOperations.value.import) return
+  viewMode.value = 'list'
+}
+
+/** 导入成功后恢复套件列表，失败时保留工作台供重试。 */
 async function handleImport(file: File) {
   const result = await importSuite(file)
-  if (result.valid) importDialogVisible.value = false
+  if (result.valid) viewMode.value = 'list'
 }
 
 async function confirmDelete() {
@@ -198,6 +211,10 @@ watch(catalog, () => {
     closeDetail()
   }
 })
+watch(currentNodeId, () => {
+  closeDetail()
+  if (!activeOperations.value.import) viewMode.value = 'list'
+})
 </script>
 
 <template>
@@ -221,82 +238,93 @@ watch(catalog, () => {
     </aside>
 
     <main class="suite-main">
-      <div class="suite-toolbar" data-ui="suite-toolbar">
-        <VustInput
-          v-model="searchQuery"
-          :placeholder="t('app.suiteCenter.searchPlaceholder')"
-          :aria-label="t('app.suiteCenter.searchPlaceholder')"
-          data-slot="suite-search"
-        />
-        <VustSelect
-          v-model="statusFilter"
-          :options="statusOptions"
-          :aria-label="t('app.suiteCenter.statusFilterLabel')"
-          data-slot="suite-status-filter"
-        />
-        <VustButton
-          class="suite-toolbar__action"
-          type="secondary"
-          :disabled="refreshing"
-          data-ui="suite-refresh"
-          @click="refreshSuites()"
-        >
-          <VustIcon name="refresh" :size="14" />
-          {{ t('common.refresh') }}
-        </VustButton>
-        <VustButton
-          class="suite-toolbar__action"
-          type="primary"
-          data-ui="suite-import"
-          @click="importDialogVisible = true"
-        >
-          <VustIcon name="plus" :size="14" />
-          {{ t('common.import') }}
-        </VustButton>
-      </div>
-
-      <div
-        class="suite-results"
-        data-slot="suite-results"
-        :aria-busy="refreshing || phase === 'loading'"
-      >
-        <div
-          v-if="refreshing || phase === 'loading'"
-          class="suite-state suite-state--loading"
-          data-ui="suite-results-loading"
-          aria-live="polite"
-        >
-          <VustLoading :loading="true" :text="t('app.suiteCenter.loading')" />
-        </div>
-        <div v-else-if="currentNodeUnavailable" class="suite-state" data-ui="node-unavailable">
-          <VustEmpty :description="t('app.suiteCenter.nodeUnavailable')" icon="server" />
-        </div>
-        <div v-else-if="phase === 'error'" class="suite-state" data-ui="suite-load-error">
-          <VustEmpty :description="loadError" icon="alert-circle" />
-          <VustButton type="secondary" @click="refreshSuites()">{{ t('common.retry') }}</VustButton>
-        </div>
-        <div v-else-if="phase === 'empty'" class="suite-state" data-ui="suite-empty-catalog">
-          <VustEmpty :description="t('app.suiteCenter.empty')" icon="package" />
-        </div>
-        <div
-          v-else-if="filteredCards.length === 0"
-          class="suite-state"
-          data-ui="suite-empty-filter"
-        >
-          <VustEmpty :description="t('app.suiteCenter.emptyFilter')" icon="search" />
-        </div>
-        <div v-else class="suite-grid">
-          <SuiteCard
-            v-for="card in filteredCards"
-            :key="card.suite.suiteId"
-            :suite="card.suite"
-            :instance="card.instance"
-            :status-label="statusLabel(card.status)"
-            :status-type="statusType(card.status)"
-            @select="selectedSuiteId = card.suite.suiteId"
+      <template v-if="viewMode === 'list'">
+        <div class="suite-toolbar" data-ui="suite-toolbar">
+          <VustInput
+            v-model="searchQuery"
+            :placeholder="t('app.suiteCenter.searchPlaceholder')"
+            :aria-label="t('app.suiteCenter.searchPlaceholder')"
+            data-slot="suite-search"
           />
+          <VustSelect
+            v-model="statusFilter"
+            :options="statusOptions"
+            :aria-label="t('app.suiteCenter.statusFilterLabel')"
+            data-slot="suite-status-filter"
+          />
+          <VustButton
+            class="suite-toolbar__action"
+            type="secondary"
+            :disabled="refreshing"
+            data-ui="suite-refresh"
+            @click="refreshSuites()"
+          >
+            <VustIcon name="refresh" :size="14" />
+            {{ t('common.refresh') }}
+          </VustButton>
+          <VustButton
+            class="suite-toolbar__action"
+            type="primary"
+            data-ui="suite-import"
+            @click="openImport"
+          >
+            <VustIcon name="plus" :size="14" />
+            {{ t('common.import') }}
+          </VustButton>
         </div>
-      </div>
+
+        <div
+          class="suite-results"
+          data-slot="suite-results"
+          :aria-busy="refreshing || phase === 'loading'"
+        >
+          <div
+            v-if="refreshing || phase === 'loading'"
+            class="suite-state suite-state--loading"
+            data-ui="suite-results-loading"
+            aria-live="polite"
+          >
+            <VustLoading :loading="true" :text="t('app.suiteCenter.loading')" />
+          </div>
+          <div v-else-if="currentNodeUnavailable" class="suite-state" data-ui="node-unavailable">
+            <VustEmpty :description="t('app.suiteCenter.nodeUnavailable')" icon="server" />
+          </div>
+          <div v-else-if="phase === 'error'" class="suite-state" data-ui="suite-load-error">
+            <VustEmpty :description="loadError" icon="alert-circle" />
+            <VustButton type="secondary" @click="refreshSuites()">{{
+              t('common.retry')
+            }}</VustButton>
+          </div>
+          <div v-else-if="phase === 'empty'" class="suite-state" data-ui="suite-empty-catalog">
+            <VustEmpty :description="t('app.suiteCenter.empty')" icon="package" />
+          </div>
+          <div
+            v-else-if="filteredCards.length === 0"
+            class="suite-state"
+            data-ui="suite-empty-filter"
+          >
+            <VustEmpty :description="t('app.suiteCenter.emptyFilter')" icon="search" />
+          </div>
+          <div v-else class="suite-grid">
+            <SuiteCard
+              v-for="card in filteredCards"
+              :key="card.suite.suiteId"
+              :suite="card.suite"
+              :instance="card.instance"
+              :status-label="statusLabel(card.status)"
+              :status-type="statusType(card.status)"
+              @select="selectedSuiteId = card.suite.suiteId"
+            />
+          </div>
+        </div>
+      </template>
+
+      <SuiteImportWorkspace
+        v-else
+        :busy="!!activeOperations.import"
+        @back="closeImport"
+        @submit="handleImport"
+      />
     </main>
 
     <SuiteDetailDrawer
@@ -325,12 +353,6 @@ watch(catalog, () => {
       @retry="retryInstallPolling"
     />
 
-    <SuiteImportDialog
-      :visible="importDialogVisible"
-      :busy="!!activeOperations.import"
-      @close="importDialogVisible = false"
-      @submit="handleImport"
-    />
     <SuiteDangerDialogs
       :delete-target="deleteTarget"
       :uninstall-suite="uninstallTarget?.suite ?? null"

@@ -1,7 +1,7 @@
 import { nextTick, ref } from 'vue'
 import { createPinia } from 'pinia'
 import { createI18n } from 'vue-i18n'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   SuiteCatalogItem,
@@ -68,7 +68,7 @@ function setupState() {
     currentNodeId: ref('local'),
     currentNodeUnavailable: ref(false),
     deleteSuite: vi.fn(),
-    importSuite: vi.fn(),
+    importSuite: vi.fn().mockResolvedValue({ valid: false }),
     installSuite: vi.fn(),
     instances: ref([installed]),
     isOperating: vi.fn(() => false),
@@ -162,5 +162,55 @@ describe('SuiteCenterView', () => {
 
     await wrapper.find('[data-slot="scanner"] .suite-card__main').trigger('click')
     expect(document.body.querySelector('[data-ui="suite-install-task"]')).not.toBeNull()
+  })
+
+  it('在右侧内容区打开导入工作台并在返回后保留筛选状态', async () => {
+    const wrapper = mountView()
+    const toolsButton = wrapper
+      .findAll('[data-ui="suite-category-list"] button')
+      .find((button) => button.text().includes('工具'))!
+    await toolsButton.trigger('click')
+    await wrapper.find('[data-slot="suite-search"] input').setValue('scanner')
+
+    await wrapper.find('[data-ui="suite-import"]').trigger('click')
+    expect(wrapper.find('[data-ui="suite-category-list"]').exists()).toBe(true)
+    expect(wrapper.find('[data-ui="suite-import-view"]').exists()).toBe(true)
+    expect(wrapper.find('[data-ui="suite-toolbar"]').exists()).toBe(false)
+    expect(wrapper.find('[data-slot="suite-results"]').exists()).toBe(false)
+    expect(document.body.querySelector('[data-ui="suite-import-dialog"]')).toBeNull()
+
+    expect(wrapper.find('[data-ui="suite-import-header-back"]').text()).toBe('返回')
+    expect(wrapper.find('[data-ui="suite-import-back"]').exists()).toBe(false)
+    await wrapper.find('[data-ui="suite-import-header-back"]').trigger('click')
+    expect(wrapper.find('[data-ui="suite-toolbar"]').exists()).toBe(true)
+    expect(wrapper.find('[data-ui="suite-import-view"]').exists()).toBe(false)
+    expect(wrapper.find('[data-slot="suite-search"] input').attributes('value')).toBe('scanner')
+    expect(toolsButton.attributes('aria-pressed')).toBe('true')
+    wrapper.unmount()
+  })
+
+  it('导入失败保留文件供重试，成功后恢复列表', async () => {
+    const importSuite = state.value.importSuite as ReturnType<typeof vi.fn>
+    importSuite.mockResolvedValueOnce({ valid: false }).mockResolvedValueOnce({ valid: true })
+    const wrapper = mountView()
+    await wrapper.find('[data-ui="suite-import"]').trigger('click')
+
+    const file = new File(['suite'], 'security-tools.vsp')
+    const input = wrapper.get<HTMLInputElement>('#suite-package-file')
+    Object.defineProperty(input.element, 'files', { configurable: true, value: [file] })
+    await input.trigger('change')
+    await wrapper.find('[data-ui="suite-confirm-import"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-ui="suite-import-view"]').exists()).toBe(true)
+    expect(wrapper.find('[data-slot="selected-package"]').text()).toBe('security-tools.vsp')
+
+    await wrapper.find('[data-ui="suite-confirm-import"]').trigger('click')
+    await flushPromises()
+    expect(importSuite).toHaveBeenCalledTimes(2)
+    expect(importSuite).toHaveBeenLastCalledWith(file)
+    expect(wrapper.find('[data-ui="suite-import-view"]').exists()).toBe(false)
+    expect(wrapper.find('[data-ui="suite-toolbar"]').exists()).toBe(true)
+    wrapper.unmount()
   })
 })
