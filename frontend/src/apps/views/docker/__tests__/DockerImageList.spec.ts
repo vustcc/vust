@@ -32,16 +32,14 @@ const mountView = () =>
     },
   })
 
-const selectFile = async (file: File) => {
-  const input = document.body.querySelector(
-    '[data-ui="image-import-file-input"]',
-  ) as HTMLInputElement
+const selectFile = async (wrapper: ReturnType<typeof mountView>, file: File) => {
+  const input = wrapper.find('[data-ui="image-import-file-input"]').element as HTMLInputElement
   Object.defineProperty(input, 'files', { configurable: true, value: [file] })
   input.dispatchEvent(new Event('change'))
   await nextTick()
 }
 
-const openDialog = async (wrapper: ReturnType<typeof mountView>) => {
+const openImportView = async (wrapper: ReturnType<typeof mountView>) => {
   await wrapper.find('[data-ui="image-import-button"]').trigger('click')
   await nextTick()
 }
@@ -70,42 +68,37 @@ describe('DockerImageList image archive import', () => {
     state.toast.info.mockReset()
   })
 
-  it('在本地镜像工具栏打开导入弹窗并显示固定目标节点', async () => {
+  it('在内容区打开导入视图并隐藏镜像列表', async () => {
     const wrapper = mountView()
-    await openDialog(wrapper)
+    await openImportView(wrapper)
 
-    const dialog = document.body.querySelector('[data-ui="image-import-dialog"]')
-    expect(dialog?.textContent).toContain('目标节点：边缘节点 A')
-    expect(dialog?.textContent).toContain('10 GB')
-    expect(dialog?.textContent).toContain('zstd')
+    const importView = wrapper.find('[data-ui="image-import-view"]')
+    expect(importView.text()).toContain('目标节点：边缘节点 A')
+    expect(importView.text()).toContain('10 GB')
+    expect(importView.text()).toContain('zstd')
     expect(
-      dialog?.querySelector('[data-ui="image-import-file-name"] input')?.getAttribute('aria-label'),
+      importView.find('[data-ui="image-import-file-name"] input').attributes('aria-label'),
     ).toBe('请选择镜像归档文件')
-    expect(wrapper.find('[data-ui="image-import-button"]').exists()).toBe(true)
-    expect(wrapper.find('[data-ui="image-refresh-button"]').exists()).toBe(true)
+    expect(wrapper.find('[data-ui="image-import-button"]').exists()).toBe(false)
+    expect(wrapper.find('[data-ui="image-refresh-button"]').exists()).toBe(false)
+    expect(document.body.querySelector('[data-ui="image-import-dialog"]')).toBeNull()
     wrapper.unmount()
   })
 
   it('立即拒绝非法后缀、空文件和超过 10 GB 的文件', async () => {
     const wrapper = mountView()
-    await openDialog(wrapper)
+    await openImportView(wrapper)
 
-    await selectFile(new File(['bad'], 'image.zip'))
-    expect(document.body.querySelector('[data-ui="image-import-error"]')?.textContent).toContain(
-      '请选择支持的',
-    )
+    await selectFile(wrapper, new File(['bad'], 'image.zip'))
+    expect(wrapper.find('[data-ui="image-import-error"]').text()).toContain('请选择支持的')
 
-    await selectFile(new File([], 'image.tar'))
-    expect(document.body.querySelector('[data-ui="image-import-error"]')?.textContent).toContain(
-      '不能为空',
-    )
+    await selectFile(wrapper, new File([], 'image.tar'))
+    expect(wrapper.find('[data-ui="image-import-error"]').text()).toContain('不能为空')
 
     const oversized = new File(['archive'], 'image.TAR.ZST')
     Object.defineProperty(oversized, 'size', { value: 10_000_000_001 })
-    await selectFile(oversized)
-    expect(document.body.querySelector('[data-ui="image-import-error"]')?.textContent).toContain(
-      '不能超过 10 GB',
-    )
+    await selectFile(wrapper, oversized)
+    expect(wrapper.find('[data-ui="image-import-error"]').text()).toContain('不能超过 10 GB')
     expect(state.loadImage).not.toHaveBeenCalled()
     wrapper.unmount()
   })
@@ -120,29 +113,26 @@ describe('DockerImageList image archive import', () => {
         }),
     )
     const wrapper = mountView()
-    await openDialog(wrapper)
-    await selectFile(new File(['archive'], 'bundle.tar.gz'))
-    ;(document.body.querySelector('[data-ui="image-import-submit"]') as HTMLButtonElement).click()
+    await openImportView(wrapper)
+    await selectFile(wrapper, new File(['archive'], 'bundle.tar.gz'))
+    await wrapper.find('[data-ui="image-import-submit"]').trigger('click')
     await nextTick()
-    const progress = document.body.querySelector('[data-ui="image-import-progress"]')
-    expect(progress?.textContent).toContain('50%')
-    expect(progress?.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe(
-      '50',
-    )
+    const progress = wrapper.find('[data-ui="image-import-progress"]')
+    expect(progress.text()).toContain('50%')
+    expect(progress.find('[role="progressbar"]').attributes('aria-valuenow')).toBe('50')
 
     const options = state.loadImage.mock.calls[0]?.[1] as {
       onUploadProgress: (event: unknown) => void
     }
     options.onUploadProgress({ loaded: 100, total: 100 })
     await nextTick()
-    expect(progress?.textContent).toContain('正在载入镜像，请勿关闭窗口')
-    expect(progress?.querySelector('[role="progressbar"]')?.hasAttribute('aria-valuenow')).toBe(
-      false,
-    )
+    expect(progress.text()).toContain('正在载入镜像，请勿关闭窗口')
+    expect(progress.find('[role="progressbar"]').attributes('aria-valuenow')).toBeUndefined()
 
     resolveRequest?.({ success: true, data: 'Loaded image', message: '' })
     await flushPromises()
-    expect(document.body.querySelector('[data-ui="image-import-dialog"]')).toBeNull()
+    expect(wrapper.find('[data-ui="image-import-view"]').exists()).toBe(false)
+    expect(wrapper.find('[data-ui="image-import-button"]').exists()).toBe(true)
     expect(state.toast.success).toHaveBeenCalledWith('镜像归档已成功导入。')
     expect(state.docker.fetchImagesList).toHaveBeenCalledTimes(2)
     expect(state.docker.fetchOverviewData).toHaveBeenCalledOnce()
@@ -156,15 +146,13 @@ describe('DockerImageList image archive import', () => {
         'Docker image import failed: Error unpacking image mssql:latest: mismatched image rootfs and manifest layers',
     })
     const wrapper = mountView()
-    await openDialog(wrapper)
-    await selectFile(new File(['archive'], 'bundle.txz'))
-    ;(document.body.querySelector('[data-ui="image-import-submit"]') as HTMLButtonElement).click()
+    await openImportView(wrapper)
+    await selectFile(wrapper, new File(['archive'], 'bundle.txz'))
+    await wrapper.find('[data-ui="image-import-submit"]').trigger('click')
     await flushPromises()
-    expect(document.body.querySelector('[data-ui="image-import-dialog"]')).not.toBeNull()
-    expect(
-      document.body.querySelector('[data-ui="image-import-file-meta"]')?.textContent,
-    ).toContain('bundle.txz')
-    expect(document.body.querySelector('[data-ui="image-import-error"]')?.textContent).toContain(
+    expect(wrapper.find('[data-ui="image-import-view"]').exists()).toBe(true)
+    expect(wrapper.find('[data-ui="image-import-file-meta"]').text()).toContain('bundle.txz')
+    expect(wrapper.find('[data-ui="image-import-error"]').text()).toContain(
       'mismatched image rootfs and manifest layers',
     )
     wrapper.unmount()
@@ -182,22 +170,20 @@ describe('DockerImageList image archive import', () => {
         }),
     )
     const wrapper = mountView()
-    await openDialog(wrapper)
-    await selectFile(new File(['archive'], 'bundle.tbz2'))
-    ;(document.body.querySelector('[data-ui="image-import-submit"]') as HTMLButtonElement).click()
+    await openImportView(wrapper)
+    await selectFile(wrapper, new File(['archive'], 'bundle.tbz2'))
+    await wrapper.find('[data-ui="image-import-submit"]').trigger('click')
     await nextTick()
-    ;(
-      document.body.querySelector(
-        '[data-ui="image-import-dialog"] .vl-dialog-footer button',
-      ) as HTMLButtonElement
-    ).click()
+    expect(wrapper.find('[data-ui="workspace-header-back"]').text()).toBe('返回')
+    expect(wrapper.find('[data-ui="image-import-back"]').exists()).toBe(false)
+    await wrapper.find('[data-ui="workspace-header-back"]').trigger('click')
     await flushPromises()
     expect(signals[0]?.aborted).toBe(true)
     expect(state.toast.info).toHaveBeenCalledWith('已取消镜像导入。')
 
-    await openDialog(wrapper)
-    await selectFile(new File(['archive'], 'bundle.tar'))
-    ;(document.body.querySelector('[data-ui="image-import-submit"]') as HTMLButtonElement).click()
+    await openImportView(wrapper)
+    await selectFile(wrapper, new File(['archive'], 'bundle.tar'))
+    await wrapper.find('[data-ui="image-import-submit"]').trigger('click')
     await nextTick()
     state.node.currentNodeId = 'node-b'
     await flushPromises()
@@ -206,9 +192,9 @@ describe('DockerImageList image archive import', () => {
 
     state.node.currentNodeId = 'node-a'
     await nextTick()
-    await openDialog(wrapper)
-    await selectFile(new File(['archive'], 'bundle.tzst'))
-    ;(document.body.querySelector('[data-ui="image-import-submit"]') as HTMLButtonElement).click()
+    await openImportView(wrapper)
+    await selectFile(wrapper, new File(['archive'], 'bundle.tzst'))
+    await wrapper.find('[data-ui="image-import-submit"]').trigger('click')
     await nextTick()
     wrapper.unmount()
     await flushPromises()

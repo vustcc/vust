@@ -95,6 +95,7 @@ const DockerContainerDetail = defineAsyncComponent(() => import('./DockerContain
       @logs-active-change="(value) => $emit('logsActiveChange', value)"
       @terminal-active-change="(value) => $emit('terminalActiveChange', value)"
     />
+    <DockerContainerCreateWizard v-else-if="store.isContainerCreateActive" />
     <DockerContainerList
       v-else
       @open-detail="
@@ -104,7 +105,6 @@ const DockerContainerDetail = defineAsyncComponent(() => import('./DockerContain
         }
       "
     />
-    <DockerContainerCreateWizard v-if="store.isContainerCreateActive" />
   </div>
 </template>
 

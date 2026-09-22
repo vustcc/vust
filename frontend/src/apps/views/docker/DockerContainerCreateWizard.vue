@@ -11,12 +11,12 @@ import {
   VustAlert,
   VustButton,
   VustCheckbox,
-  VustDialog,
   VustFormItem,
   VustInput,
   VustSelect,
 } from '@/components/ui'
 import type { DockerContainerCreateMount, DockerContainerCreatePort } from '@/api/interface/docker'
+import DockerContentWorkspace from './DockerContentWorkspace.vue'
 
 const { t } = useI18n()
 const store = useDockerStore()
@@ -88,15 +88,15 @@ function updateMount(index: number, update: Partial<DockerContainerCreateMount>)
 </script>
 
 <template>
-  <VustDialog
-    :visible="store.isContainerCreateActive"
+  <DockerContentWorkspace
     :title="t('app.docker.containers.createContainer')"
-    width="820px"
-    :close-on-click-overlay="!store.containerCreateLoading"
-    data-ui="container-create-dialog"
-    @close="store.cancelContainerCreate"
+    :back-label="t('common.back')"
+    :back-disabled="store.containerCreateLoading"
+    return-focus-selector="[data-ui='create-container']"
+    data-ui="container-create-view"
+    @back="store.cancelContainerCreate"
   >
-    <div class="create-form" data-slot="body">
+    <div class="create-form">
       <VustAlert
         v-if="store.containerCreateError"
         type="error"
@@ -316,9 +316,6 @@ function updateMount(index: number, update: Partial<DockerContainerCreateMount>)
     </div>
 
     <template #footer>
-      <VustButton :disabled="store.containerCreateLoading" @click="store.cancelContainerCreate">
-        {{ t('common.cancel') }}
-      </VustButton>
       <VustButton
         type="primary"
         :loading="store.containerCreateLoading"
@@ -328,7 +325,7 @@ function updateMount(index: number, update: Partial<DockerContainerCreateMount>)
         {{ t('app.docker.containers.createContainer') }}
       </VustButton>
     </template>
-  </VustDialog>
+  </DockerContentWorkspace>
 </template>
 
 <style scoped>

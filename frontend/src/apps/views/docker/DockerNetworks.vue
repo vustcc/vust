@@ -7,7 +7,6 @@ import {
   VustAlert,
   VustButton,
   VustDescriptions,
-  VustDialog,
   VustDrawer,
   VustEmpty,
   VustFormItem,
@@ -18,6 +17,7 @@ import {
   VustTable,
   VustTag,
 } from '@/components/ui'
+import DockerContentWorkspace from './DockerContentWorkspace.vue'
 import type {
   DockerNetworkContainer,
   DockerNetworkCreateRequest,
@@ -200,6 +200,7 @@ function formatIpam(
     .join('; ')
 }
 
+/** 打开并重置网络创建视图。 */
 function openCreate(): void {
   form.value = emptyForm()
   advancedVisible.value = false
@@ -207,9 +208,12 @@ function openCreate(): void {
   createVisible.value = true
 }
 
+/** 在未提交时返回列表并清理创建草稿。 */
 function closeCreate(): void {
   if (store.networkCreateLoading) return
   createVisible.value = false
+  form.value = emptyForm()
+  advancedVisible.value = false
   createError.value = ''
 }
 
@@ -256,7 +260,7 @@ async function submitCreate(): Promise<void> {
       options,
       labels,
     }
-    if (await store.createNetwork(payload)) createVisible.value = false
+    if (await store.createNetwork(payload)) closeCreate()
   } catch (error) {
     createError.value = error instanceof Error ? error.message : t('common.unknownError')
   }
@@ -369,82 +373,94 @@ watch(
 
 <template>
   <div class="network-page" data-page="docker-networks">
-    <div class="network-toolbar" data-ui="toolbar">
-      <div class="toolbar-filters" data-slot="filters">
-        <label class="sr-only" for="docker-network-search">
-          {{ t('app.docker.networks.filters.searchPlaceholder') }}
-        </label>
-        <VustInput
-          id="docker-network-search"
-          v-model="search"
-          class="search-input"
-          :placeholder="t('app.docker.networks.filters.searchPlaceholder')"
-        />
-        <VustSelect v-model="managementFilter" class="filter-select" :options="managementOptions" />
-        <VustSelect v-model="driverFilter" class="filter-select" :options="driverOptions" />
-      </div>
-      <div class="toolbar-actions" data-slot="actions">
-        <VustButton :loading="store.networkListLoading" @click="store.fetchNetworks">
-          {{ t('common.refresh') }}
-        </VustButton>
-        <VustButton type="primary" @click="openCreate">
-          {{ t('app.docker.networks.actions.create') }}
-        </VustButton>
-      </div>
-    </div>
-
-    <VustAlert
-      v-if="store.networkListError"
-      type="warning"
-      :title="t('app.docker.networks.refreshFailed')"
-      :description="store.networkListError"
-      show-icon
-      data-ui="network-list-error"
-    />
-
-    <div class="network-table-shell" data-ui="table">
-      <VustTable v-if="filteredNetworks.length" :data="filteredNetworks" :columns="columns" border>
-        <template #name="{ row }: { row: DockerNetworkSummary }">
-          <button class="network-name" type="button" @click="openDetail(row)">
-            {{ row.name }}
-          </button>
-        </template>
-        <template #management="{ row }: { row: DockerNetworkSummary }">
-          <VustTag :type="managementTagType(row.management.kind)" size="small">
-            {{ managementLabel(row) }}
-          </VustTag>
-        </template>
-        <template #driver="{ row }: { row: DockerNetworkSummary }">
-          <span class="mono-text">{{ row.driver }}</span>
-        </template>
-        <template #subnets="{ row }: { row: DockerNetworkSummary }">
-          <span class="mono-text subnet-cell">{{ row.subnets.join(', ') || '-' }}</span>
-        </template>
-        <template #actions="{ row }: { row: DockerNetworkSummary }">
-          <VustActionMenu
-            :label="t('app.docker.networks.actions.menu')"
-            :actions="rowActions(row)"
+    <template v-if="!createVisible">
+      <div class="network-toolbar" data-ui="toolbar">
+        <div class="toolbar-filters" data-slot="filters">
+          <label class="sr-only" for="docker-network-search">
+            {{ t('app.docker.networks.filters.searchPlaceholder') }}
+          </label>
+          <VustInput
+            id="docker-network-search"
+            v-model="search"
+            class="search-input"
+            :placeholder="t('app.docker.networks.filters.searchPlaceholder')"
           />
-        </template>
-      </VustTable>
-      <VustEmpty
-        v-else-if="!store.networkListLoading"
-        :description="
-          search || managementFilter || driverFilter
-            ? t('app.docker.networks.filteredEmpty')
-            : t('app.docker.networks.empty')
-        "
-      />
-      <VustLoading :loading="store.networkListLoading && !store.networks.length" cover />
-    </div>
+          <VustSelect
+            v-model="managementFilter"
+            class="filter-select"
+            :options="managementOptions"
+          />
+          <VustSelect v-model="driverFilter" class="filter-select" :options="driverOptions" />
+        </div>
+        <div class="toolbar-actions" data-slot="actions">
+          <VustButton :loading="store.networkListLoading" @click="store.fetchNetworks">
+            {{ t('common.refresh') }}
+          </VustButton>
+          <VustButton type="primary" data-ui="network-create-button" @click="openCreate">
+            {{ t('app.docker.networks.actions.create') }}
+          </VustButton>
+        </div>
+      </div>
 
-    <VustDialog
-      :visible="createVisible"
+      <VustAlert
+        v-if="store.networkListError"
+        type="warning"
+        :title="t('app.docker.networks.refreshFailed')"
+        :description="store.networkListError"
+        show-icon
+        data-ui="network-list-error"
+      />
+
+      <div class="network-table-shell" data-ui="table">
+        <VustTable
+          v-if="filteredNetworks.length"
+          :data="filteredNetworks"
+          :columns="columns"
+          border
+        >
+          <template #name="{ row }: { row: DockerNetworkSummary }">
+            <button class="network-name" type="button" @click="openDetail(row)">
+              {{ row.name }}
+            </button>
+          </template>
+          <template #management="{ row }: { row: DockerNetworkSummary }">
+            <VustTag :type="managementTagType(row.management.kind)" size="small">
+              {{ managementLabel(row) }}
+            </VustTag>
+          </template>
+          <template #driver="{ row }: { row: DockerNetworkSummary }">
+            <span class="mono-text">{{ row.driver }}</span>
+          </template>
+          <template #subnets="{ row }: { row: DockerNetworkSummary }">
+            <span class="mono-text subnet-cell">{{ row.subnets.join(', ') || '-' }}</span>
+          </template>
+          <template #actions="{ row }: { row: DockerNetworkSummary }">
+            <VustActionMenu
+              :label="t('app.docker.networks.actions.menu')"
+              :actions="rowActions(row)"
+            />
+          </template>
+        </VustTable>
+        <VustEmpty
+          v-else-if="!store.networkListLoading"
+          :description="
+            search || managementFilter || driverFilter
+              ? t('app.docker.networks.filteredEmpty')
+              : t('app.docker.networks.empty')
+          "
+        />
+        <VustLoading :loading="store.networkListLoading && !store.networks.length" cover />
+      </div>
+    </template>
+
+    <DockerContentWorkspace
+      v-else
       :title="t('app.docker.networks.create.title')"
-      width="680px"
-      :close-on-click-overlay="!store.networkCreateLoading"
-      data-ui="network-create-dialog"
-      @close="closeCreate"
+      :back-label="t('common.back')"
+      :back-disabled="store.networkCreateLoading"
+      return-focus-selector="[data-ui='network-create-button']"
+      data-ui="network-create-view"
+      @back="closeCreate"
     >
       <div class="create-form" data-slot="body">
         <VustAlert v-if="createError" type="error" :title="createError" show-icon />
@@ -572,14 +588,16 @@ watch(
         </div>
       </div>
       <template #footer>
-        <VustButton :disabled="store.networkCreateLoading" @click="closeCreate">{{
-          t('common.cancel')
-        }}</VustButton>
-        <VustButton type="primary" :loading="store.networkCreateLoading" @click="submitCreate">{{
-          t('app.docker.networks.actions.submit')
-        }}</VustButton>
+        <VustButton
+          type="primary"
+          :loading="store.networkCreateLoading"
+          data-ui="network-create-submit"
+          @click="submitCreate"
+        >
+          {{ t('app.docker.networks.actions.submit') }}
+        </VustButton>
       </template>
-    </VustDialog>
+    </DockerContentWorkspace>
 
     <VustDrawer
       v-model="detailVisible"

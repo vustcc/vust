@@ -7,7 +7,6 @@ import {
   VustAlert,
   VustButton,
   VustDescriptions,
-  VustDialog,
   VustDrawer,
   VustEmpty,
   VustFormItem,
@@ -17,6 +16,7 @@ import {
   VustTable,
   VustTag,
 } from '@/components/ui'
+import DockerContentWorkspace from './DockerContentWorkspace.vue'
 import type {
   DockerVolumeContainerReference,
   DockerVolumeManagementKind,
@@ -153,7 +153,7 @@ function stateLabel(state: string): string {
     : t('app.docker.volumes.detail.states.unknown')
 }
 
-/** 打开并重置本地卷创建对话框。 */
+/** 打开并重置本地卷创建视图。 */
 function openCreate(): void {
   form.value = { name: '', options: '', labels: '' }
   advancedVisible.value = false
@@ -162,10 +162,12 @@ function openCreate(): void {
   createVisible.value = true
 }
 
-/** 在未提交时关闭创建对话框。 */
+/** 在未提交时返回列表并清理创建草稿。 */
 function closeCreate(): void {
   if (store.volumeCreateLoading) return
   createVisible.value = false
+  form.value = { name: '', options: '', labels: '' }
+  advancedVisible.value = false
   createError.value = ''
   store.volumeCreateError = null
 }
@@ -263,87 +265,94 @@ watch(
 
 <template>
   <div class="volume-page" data-page="docker-volumes">
-    <div class="volume-toolbar" data-ui="toolbar">
-      <div class="toolbar-filters" data-slot="filters">
-        <label class="sr-only" for="docker-volume-search">
-          {{ t('app.docker.volumes.filters.searchPlaceholder') }}
-        </label>
-        <VustInput
-          id="docker-volume-search"
-          v-model="search"
-          class="search-input"
-          :placeholder="t('app.docker.volumes.filters.searchPlaceholder')"
-        />
-        <VustSelect v-model="managementFilter" class="filter-select" :options="managementOptions" />
-      </div>
-      <div class="toolbar-actions" data-slot="actions">
-        <VustButton :loading="store.volumeListLoading" @click="store.fetchVolumes">
-          {{ t('common.refresh') }}
-        </VustButton>
-        <VustButton type="primary" @click="openCreate">
-          {{ t('app.docker.volumes.actions.create') }}
-        </VustButton>
-      </div>
-    </div>
-
-    <VustAlert
-      v-if="store.volumeListError"
-      type="warning"
-      :title="t('app.docker.volumes.refreshFailed')"
-      :description="store.volumeListError"
-      show-icon
-      data-ui="volume-list-error"
-    />
-    <VustAlert
-      v-if="store.volumeWarnings.length"
-      type="warning"
-      :title="t('app.docker.volumes.daemonWarnings')"
-      :description="store.volumeWarnings.join('; ')"
-      show-icon
-      data-ui="volume-daemon-warnings"
-    />
-
-    <div class="volume-table-shell" data-ui="table">
-      <VustTable v-if="filteredVolumes.length" :data="filteredVolumes" :columns="columns" border>
-        <template #name="{ row }: { row: DockerVolumeSummary }">
-          <button class="volume-name" type="button" @click="openDetail(row)">
-            {{ row.name }}
-          </button>
-        </template>
-        <template #management="{ row }: { row: DockerVolumeSummary }">
-          <VustTag :type="managementTagType(row.management.kind)" size="small">
-            {{ managementLabel(row) }}
-          </VustTag>
-        </template>
-        <template #createdAt="{ row }: { row: DockerVolumeSummary }">
-          {{ formatDateTime(row.createdAt) }}
-        </template>
-        <template #actions="{ row }: { row: DockerVolumeSummary }">
-          <VustActionMenu
-            :label="t('app.docker.volumes.actions.menu')"
-            :disabled="store.volumeDeleteLoadingName === row.name"
-            :actions="rowActions(row)"
+    <template v-if="!createVisible">
+      <div class="volume-toolbar" data-ui="toolbar">
+        <div class="toolbar-filters" data-slot="filters">
+          <label class="sr-only" for="docker-volume-search">
+            {{ t('app.docker.volumes.filters.searchPlaceholder') }}
+          </label>
+          <VustInput
+            id="docker-volume-search"
+            v-model="search"
+            class="search-input"
+            :placeholder="t('app.docker.volumes.filters.searchPlaceholder')"
           />
-        </template>
-      </VustTable>
-      <VustEmpty
-        v-else-if="!store.volumeListLoading"
-        :description="
-          search || managementFilter
-            ? t('app.docker.volumes.filteredEmpty')
-            : t('app.docker.volumes.empty')
-        "
-      />
-      <VustLoading :loading="store.volumeListLoading && !store.volumes.length" cover />
-    </div>
+          <VustSelect
+            v-model="managementFilter"
+            class="filter-select"
+            :options="managementOptions"
+          />
+        </div>
+        <div class="toolbar-actions" data-slot="actions">
+          <VustButton :loading="store.volumeListLoading" @click="store.fetchVolumes">
+            {{ t('common.refresh') }}
+          </VustButton>
+          <VustButton type="primary" data-ui="volume-create-button" @click="openCreate">
+            {{ t('app.docker.volumes.actions.create') }}
+          </VustButton>
+        </div>
+      </div>
 
-    <VustDialog
-      :visible="createVisible"
+      <VustAlert
+        v-if="store.volumeListError"
+        type="warning"
+        :title="t('app.docker.volumes.refreshFailed')"
+        :description="store.volumeListError"
+        show-icon
+        data-ui="volume-list-error"
+      />
+      <VustAlert
+        v-if="store.volumeWarnings.length"
+        type="warning"
+        :title="t('app.docker.volumes.daemonWarnings')"
+        :description="store.volumeWarnings.join('; ')"
+        show-icon
+        data-ui="volume-daemon-warnings"
+      />
+
+      <div class="volume-table-shell" data-ui="table">
+        <VustTable v-if="filteredVolumes.length" :data="filteredVolumes" :columns="columns" border>
+          <template #name="{ row }: { row: DockerVolumeSummary }">
+            <button class="volume-name" type="button" @click="openDetail(row)">
+              {{ row.name }}
+            </button>
+          </template>
+          <template #management="{ row }: { row: DockerVolumeSummary }">
+            <VustTag :type="managementTagType(row.management.kind)" size="small">
+              {{ managementLabel(row) }}
+            </VustTag>
+          </template>
+          <template #createdAt="{ row }: { row: DockerVolumeSummary }">
+            {{ formatDateTime(row.createdAt) }}
+          </template>
+          <template #actions="{ row }: { row: DockerVolumeSummary }">
+            <VustActionMenu
+              :label="t('app.docker.volumes.actions.menu')"
+              :disabled="store.volumeDeleteLoadingName === row.name"
+              :actions="rowActions(row)"
+            />
+          </template>
+        </VustTable>
+        <VustEmpty
+          v-else-if="!store.volumeListLoading"
+          :description="
+            search || managementFilter
+              ? t('app.docker.volumes.filteredEmpty')
+              : t('app.docker.volumes.empty')
+          "
+        />
+        <VustLoading :loading="store.volumeListLoading && !store.volumes.length" cover />
+      </div>
+    </template>
+
+    <DockerContentWorkspace
+      v-else
       :title="t('app.docker.volumes.create.title')"
-      width="620px"
-      :close-on-click-overlay="!store.volumeCreateLoading"
-      data-ui="volume-create-dialog"
-      @close="closeCreate"
+      :back-label="t('common.back')"
+      :back-disabled="store.volumeCreateLoading"
+      return-focus-selector="[data-ui='volume-create-button']"
+      data-ui="volume-create-view"
+      @back="closeCreate"
     >
       <div class="create-form" data-slot="body">
         <VustAlert
@@ -393,14 +402,16 @@ watch(
         </div>
       </div>
       <template #footer>
-        <VustButton :disabled="store.volumeCreateLoading" @click="closeCreate">
-          {{ t('common.cancel') }}
-        </VustButton>
-        <VustButton type="primary" :loading="store.volumeCreateLoading" @click="submitCreate">
+        <VustButton
+          type="primary"
+          :loading="store.volumeCreateLoading"
+          data-ui="volume-create-submit"
+          @click="submitCreate"
+        >
           {{ t('app.docker.volumes.actions.submit') }}
         </VustButton>
       </template>
-    </VustDialog>
+    </DockerContentWorkspace>
 
     <VustDrawer
       v-model="detailVisible"

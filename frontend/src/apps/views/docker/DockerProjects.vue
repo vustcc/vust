@@ -25,6 +25,8 @@ import {
   VustTag,
 } from '@/components/ui'
 import DockerProjectDetailDrawer from './DockerProjectDetailDrawer.vue'
+import DockerProjectDeploymentProgress from './DockerProjectDeploymentProgress.vue'
+import DockerContentWorkspace from './DockerContentWorkspace.vue'
 
 const { t } = useI18n()
 const store = useDockerStore()
@@ -36,7 +38,8 @@ const managementKind = ref<dockerType.DockerProjectManagementKind | ''>('')
 const runtimeState = ref<dockerType.DockerProjectRuntimeState | ''>('')
 const detailVisible = ref(false)
 const detailProjectName = ref('')
-const createVisible = ref(false)
+const viewMode = ref<'list' | 'create' | 'create-progress'>('list')
+const createSubmitting = ref(false)
 const createError = ref('')
 const configurationVisible = ref(false)
 const configurationProjectName = ref('')
@@ -88,22 +91,7 @@ const totalPages = computed(() =>
 const hasFilters = computed(() =>
   Boolean(keyword.value || managementKind.value || runtimeState.value),
 )
-const deploymentProgressItems = computed(() => store.projectDeploymentProgress?.progressItems ?? [])
-const deploymentProgressPhases = computed(() => {
-  const phases: dockerType.DockerProjectProgressPhase[] = ['pulling', 'applying']
-  return phases
-    .map((phase) => ({
-      phase,
-      items: deploymentProgressItems.value.filter((item) => item.phase === phase),
-    }))
-    .filter((group) => group.items.length)
-})
-const deploymentStageSteps = computed(() => [
-  { key: 'preparing', label: t('app.docker.projects.deploymentProgress.stageSteps.preparing') },
-  { key: 'pulling', label: t('app.docker.projects.deploymentProgress.stageSteps.pulling') },
-  { key: 'applying', label: t('app.docker.projects.deploymentProgress.stageSteps.applying') },
-  { key: 'completed', label: t('app.docker.projects.deploymentProgress.stageSteps.completed') },
-])
+const createBusy = computed(() => createSubmitting.value || store.projectMutationLoading)
 
 const loadProjects = (page = store.projectPage) =>
   store.fetchComposeProjects({
@@ -160,7 +148,17 @@ const openCreate = () => {
     name: '',
     composeYaml: '',
   })
-  createVisible.value = true
+  viewMode.value = 'create'
+}
+/** 放弃当前创建表单并恢复项目列表。 */
+const closeCreate = () => {
+  if (createBusy.value) return
+  createError.value = ''
+  Object.assign(createForm, {
+    name: '',
+    composeYaml: '',
+  })
+  viewMode.value = 'list'
 }
 const fillComposeExample = async () => {
   if (createForm.composeYaml.trim()) {
@@ -175,25 +173,45 @@ const fillComposeExample = async () => {
   createForm.composeYaml = composeExample
 }
 const submitCreate = async () => {
+  if (createSubmitting.value) return
   createError.value = ''
   if (createYamlError.value) return
-  const validation = await store.validateComposeYaml(createForm.composeYaml)
-  if (!validation) {
-    createError.value = store.projectConfigurationError || t('common.unknownError')
-    return
+  const payload = {
+    name: createForm.name.trim(),
+    composeYaml: createForm.composeYaml,
   }
-  if (!validation.valid) {
-    createError.value = validation.error || t('app.docker.projects.configuration.invalid')
-    return
+  createSubmitting.value = true
+  try {
+    const validation = await store.validateComposeYaml(payload.composeYaml)
+    if (!validation) {
+      createError.value = store.projectConfigurationError || t('common.unknownError')
+      return
+    }
+    if (!validation.valid) {
+      createError.value = validation.error || t('app.docker.projects.configuration.invalid')
+      return
+    }
+    if (!(await store.createComposeProject(payload))) return
+    viewMode.value =
+      store.projectDeploymentProgress?.operation === 'create' ? 'create-progress' : 'list'
+  } finally {
+    createSubmitting.value = false
   }
-  if (
-    await store.createComposeProject({
-      name: createForm.name.trim(),
-      composeYaml: createForm.composeYaml,
-    })
-  ) {
-    createVisible.value = false
+}
+
+/** 打开当前部署进度；创建任务使用内容区，其他任务沿用 Dialog。 */
+const openDeploymentProgress = () => {
+  if (!store.projectDeploymentProgress) return
+  store.openProjectDeploymentProgress()
+  if (store.projectDeploymentProgress.operation === 'create') {
+    viewMode.value = 'create-progress'
   }
+}
+
+/** 将创建任务转入后台或关闭已完成任务，并恢复项目列表。 */
+const leaveCreateProgress = () => {
+  store.closeProjectDeploymentProgress()
+  viewMode.value = 'list'
 }
 
 const openConfiguration = async (name: string) => {
@@ -314,127 +332,6 @@ const statusTagType = (state: dockerType.DockerProjectRuntimeState) => {
   if (state === 'stopped') return 'info'
   return 'default'
 }
-const operationStatusType = (status: dockerType.DockerProjectTaskStatus) => {
-  if (status === 'succeeded') return 'success'
-  if (status === 'failed') return 'danger'
-  if (status === 'cancelled') return 'warning'
-  return 'info'
-}
-const progressStatusType = (status: dockerType.DockerProjectProgressStatus) => {
-  if (status === 'done') return 'success'
-  if (status === 'warning') return 'warning'
-  if (status === 'error') return 'danger'
-  return 'info'
-}
-const progressActionLabel = (action: string) => {
-  const key = action.trim().toLowerCase().replaceAll(' ', '_')
-  const knownActions = new Set([
-    'creating',
-    'starting',
-    'started',
-    'waiting',
-    'healthy',
-    'running',
-    'created',
-    'stopping',
-    'stopped',
-    'removing',
-    'removed',
-    'building',
-    'built',
-    'pulling',
-    'pulled',
-    'downloading',
-    'download_complete',
-  ])
-  return knownActions.has(key) ? t(`app.docker.projects.deploymentProgress.actions.${key}`) : action
-}
-const progressItemChildren = (parentId: string) =>
-  deploymentProgressItems.value.filter((item) => item.parentId === parentId)
-const progressRootItems = (items: dockerType.DockerProjectTaskProgressItem[]) => {
-  const ids = new Set(items.map((item) => item.id))
-  return items.filter((item) => !item.parentId || !ids.has(item.parentId))
-}
-const formatProgressBytes = (value: number) => {
-  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
-  let amount = Math.max(0, value)
-  let unit = 0
-  while (amount >= 1024 && unit < units.length - 1) {
-    amount /= 1024
-    unit += 1
-  }
-  const digits = unit === 0 || amount >= 100 ? 0 : 1
-  return `${amount.toFixed(digits)} ${units[unit]}`
-}
-const progressBytesLabel = (item: dockerType.DockerProjectTaskProgressItem) => {
-  if (
-    typeof item.currentBytes === 'number' &&
-    Number.isFinite(item.currentBytes) &&
-    typeof item.totalBytes === 'number' &&
-    Number.isFinite(item.totalBytes) &&
-    item.totalBytes > 0
-  ) {
-    return `${formatProgressBytes(item.currentBytes)} / ${formatProgressBytes(item.totalBytes)}`
-  }
-  return ''
-}
-const progressItemPercent = (item: dockerType.DockerProjectTaskProgressItem) => {
-  if (typeof item.percent === 'number' && Number.isFinite(item.percent)) return item.percent
-  const children = progressItemChildren(item.id)
-  const byteMetrics = children
-    .filter(
-      (child) =>
-        typeof child.currentBytes === 'number' &&
-        Number.isFinite(child.currentBytes) &&
-        typeof child.totalBytes === 'number' &&
-        Number.isFinite(child.totalBytes),
-    )
-    .reduce(
-      (metrics, child) => ({
-        current: metrics.current + Math.min(child.currentBytes ?? 0, child.totalBytes ?? 0),
-        total: metrics.total + (child.totalBytes ?? 0),
-      }),
-      { current: 0, total: 0 },
-    )
-  if (byteMetrics.total) return Math.round((byteMetrics.current / byteMetrics.total) * 100)
-  const percentages = children
-    .map((child) => child.percent)
-    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
-  if (!percentages.length) return undefined
-  return Math.round(percentages.reduce((sum, value) => sum + value, 0) / percentages.length)
-}
-const progressItemPercentLabel = (item: dockerType.DockerProjectTaskProgressItem) => {
-  const percent = progressItemPercent(item)
-  return percent === undefined ? '' : `${percent}%`
-}
-const progressPhaseCompleted = (phase: dockerType.DockerProjectProgressPhase) => {
-  const items = deploymentProgressItems.value.filter((item) => item.phase === phase)
-  return (
-    items.length > 0 && items.every((item) => item.status === 'done' || item.status === 'warning')
-  )
-}
-const deploymentStageState = (key: string) => {
-  const operation = store.projectDeploymentProgress
-  if (!operation) return 'pending'
-  if (key === 'completed') {
-    if (operation.status === 'failed' || operation.status === 'cancelled') return 'error'
-    return operation.status === 'succeeded' ? 'done' : 'pending'
-  }
-  if (operation.status === 'failed' || operation.status === 'cancelled') {
-    return operation.stage === key ? 'error' : 'done'
-  }
-  if (key === 'pulling' && progressPhaseCompleted('pulling')) return 'done'
-  if (key === 'applying' && progressPhaseCompleted('applying')) return 'done'
-  if (key === 'preparing' && deploymentProgressItems.value.length) return 'done'
-  const order = ['preparing', 'pulling', 'applying']
-  const currentStage = operation.stage === 'validating' ? 'preparing' : operation.stage
-  const stepIndex = order.indexOf(key)
-  const currentIndex = order.indexOf(currentStage)
-  if (key === 'pulling' && currentIndex > stepIndex && !operation.pullImages) return 'skipped'
-  if (stepIndex < currentIndex || operation.status === 'succeeded') return 'done'
-  if (stepIndex === currentIndex) return 'active'
-  return 'pending'
-}
 const handleVisibility = () => {
   if (document.hidden) {
     store.stopProjectOperationPolling()
@@ -444,6 +341,19 @@ const handleVisibility = () => {
 }
 
 watch([keyword, managementKind, runtimeState], () => void loadProjects(1))
+watch(
+  [() => store.projectDeploymentProgress, () => store.projectDeploymentProgressVisible],
+  ([progress, visible]) => {
+    if (!progress && viewMode.value === 'create-progress') {
+      viewMode.value = 'list'
+      return
+    }
+    if (progress?.operation === 'create' && visible && viewMode.value === 'list') {
+      viewMode.value = 'create-progress'
+    }
+  },
+  { immediate: true },
+)
 watch(
   () => nodeStore.currentNodeId,
   () => {
@@ -463,127 +373,132 @@ onUnmounted(() => {
 
 <template>
   <div class="project-page" data-page="docker-projects">
-    <div class="project-toolbar" data-ui="toolbar">
-      <div class="toolbar-filters">
-        <VustInput
-          id="docker-project-search"
-          v-model="keyword"
-          name="dockerProjectSearch"
-          :placeholder="t('app.docker.projects.filters.searchPlaceholder')"
-        />
-        <VustSelect
-          id="docker-project-management-filter"
-          v-model="managementKind"
-          name="dockerProjectManagementFilter"
-          :options="managementOptions"
-        />
-        <VustSelect
-          id="docker-project-status-filter"
-          v-model="runtimeState"
-          name="dockerProjectStatusFilter"
-          :options="runtimeOptions"
-        />
+    <template v-if="viewMode === 'list'">
+      <div class="project-toolbar" data-ui="toolbar">
+        <div class="toolbar-filters">
+          <VustInput
+            id="docker-project-search"
+            v-model="keyword"
+            name="dockerProjectSearch"
+            :placeholder="t('app.docker.projects.filters.searchPlaceholder')"
+          />
+          <VustSelect
+            id="docker-project-management-filter"
+            v-model="managementKind"
+            name="dockerProjectManagementFilter"
+            :options="managementOptions"
+          />
+          <VustSelect
+            id="docker-project-status-filter"
+            v-model="runtimeState"
+            name="dockerProjectStatusFilter"
+            :options="runtimeOptions"
+          />
+        </div>
+        <div class="toolbar-actions">
+          <VustButton
+            v-if="store.projectDeploymentProgress && !store.projectDeploymentProgressVisible"
+            type="info"
+            size="small"
+            data-ui="restore-deployment-progress"
+            @click="openDeploymentProgress"
+          >
+            {{
+              t('app.docker.projects.deploymentProgress.restore', {
+                percent: store.projectDeploymentProgress.progressPercent,
+              })
+            }}
+          </VustButton>
+          <VustButton type="secondary" :loading="store.projectListLoading" @click="loadProjects()">
+            {{ t('common.refresh') }}
+          </VustButton>
+          <VustButton type="primary" data-ui="project-create-button" @click="openCreate">
+            {{ t('app.docker.projects.actions.create') }}
+          </VustButton>
+        </div>
       </div>
-      <div class="toolbar-actions">
-        <VustButton
-          v-if="store.projectDeploymentProgress && !store.projectDeploymentProgressVisible"
-          type="info"
-          size="small"
-          data-ui="restore-deployment-progress"
-          @click="store.openProjectDeploymentProgress"
-        >
-          {{
-            t('app.docker.projects.deploymentProgress.restore', {
-              percent: store.projectDeploymentProgress.progressPercent,
-            })
-          }}
-        </VustButton>
-        <VustButton type="secondary" :loading="store.projectListLoading" @click="loadProjects()">{{
-          t('common.refresh')
-        }}</VustButton>
-        <VustButton type="primary" @click="openCreate">{{
-          t('app.docker.projects.actions.create')
-        }}</VustButton>
-      </div>
-    </div>
 
-    <VustAlert
-      v-if="store.projectListError && store.composeProjects.length"
-      type="warning"
-      :title="t('app.docker.projects.refreshFailed')"
-      :description="store.projectListError"
-      show-icon
-      data-ui="refresh-warning"
-    />
-    <div class="project-content" data-slot="content">
       <VustAlert
-        v-if="store.projectListError && !store.composeProjects.length && !store.projectListLoading"
-        type="error"
-        :title="t('app.docker.projects.loadFailed')"
+        v-if="store.projectListError && store.composeProjects.length"
+        type="warning"
+        :title="t('app.docker.projects.refreshFailed')"
         :description="store.projectListError"
         show-icon
+        data-ui="refresh-warning"
       />
-      <VustTable
-        v-if="store.composeProjects.length"
-        :data="store.composeProjects"
-        :columns="columns"
-        border
-        data-ui="table"
-      >
-        <template #name="{ row }: { row: dockerType.DockerProjectSummary }">
-          <button class="project-name" type="button" @click="openDetail(row.name)">
-            {{ row.name }}
-          </button>
-        </template>
-        <template #management="{ row }: { row: dockerType.DockerProjectSummary }">
-          <VustTag :type="row.management.kind === 'custom' ? 'default' : 'primary'">{{
-            t(`app.docker.projects.management.${row.management.kind}`)
-          }}</VustTag>
-        </template>
-        <template #status="{ row }: { row: dockerType.DockerProjectSummary }">
-          <VustTag :type="statusTagType(row.runtimeState)">{{
-            t(`app.docker.projects.status.${row.runtimeState}`)
-          }}</VustTag>
-        </template>
-        <template #runningTotal="{ row }: { row: dockerType.DockerProjectSummary }"
-          >{{ row.containerStates.running }}/{{ row.containerStates.total }}</template
+      <div class="project-content" data-slot="content">
+        <VustAlert
+          v-if="
+            store.projectListError && !store.composeProjects.length && !store.projectListLoading
+          "
+          type="error"
+          :title="t('app.docker.projects.loadFailed')"
+          :description="store.projectListError"
+          show-icon
+        />
+        <VustTable
+          v-if="store.composeProjects.length"
+          :data="store.composeProjects"
+          :columns="columns"
+          border
+          data-ui="table"
         >
-        <template #actions="{ row }: { row: dockerType.DockerProjectSummary }">
-          <VustActionMenu
-            :label="t('app.docker.projects.actions.menu')"
-            :actions="rowActions(row)"
-          />
-        </template>
-      </VustTable>
-      <VustEmpty
-        v-else-if="!store.projectListLoading && !store.projectListError"
-        :description="
-          hasFilters ? t('app.docker.projects.filteredEmpty') : t('app.docker.projects.empty')
-        "
-      />
-      <VustLoading :loading="store.projectListLoading && !store.composeProjects.length" cover />
-    </div>
-    <div
-      v-if="store.projectTotal > store.projectPageSize"
-      class="project-pagination"
-      data-ui="pagination"
-    >
-      <VustPagination
-        :current-page="store.projectPage"
-        :total-pages="totalPages"
-        @page-change="loadProjects"
-      />
-    </div>
+          <template #name="{ row }: { row: dockerType.DockerProjectSummary }">
+            <button class="project-name" type="button" @click="openDetail(row.name)">
+              {{ row.name }}
+            </button>
+          </template>
+          <template #management="{ row }: { row: dockerType.DockerProjectSummary }">
+            <VustTag :type="row.management.kind === 'custom' ? 'default' : 'primary'">
+              {{ t(`app.docker.projects.management.${row.management.kind}`) }}
+            </VustTag>
+          </template>
+          <template #status="{ row }: { row: dockerType.DockerProjectSummary }">
+            <VustTag :type="statusTagType(row.runtimeState)">
+              {{ t(`app.docker.projects.status.${row.runtimeState}`) }}
+            </VustTag>
+          </template>
+          <template #runningTotal="{ row }: { row: dockerType.DockerProjectSummary }">
+            {{ row.containerStates.running }}/{{ row.containerStates.total }}
+          </template>
+          <template #actions="{ row }: { row: dockerType.DockerProjectSummary }">
+            <VustActionMenu
+              :label="t('app.docker.projects.actions.menu')"
+              :actions="rowActions(row)"
+            />
+          </template>
+        </VustTable>
+        <VustEmpty
+          v-else-if="!store.projectListLoading && !store.projectListError"
+          :description="
+            hasFilters ? t('app.docker.projects.filteredEmpty') : t('app.docker.projects.empty')
+          "
+        />
+        <VustLoading :loading="store.projectListLoading && !store.composeProjects.length" cover />
+      </div>
+      <div
+        v-if="store.projectTotal > store.projectPageSize"
+        class="project-pagination"
+        data-ui="pagination"
+      >
+        <VustPagination
+          :current-page="store.projectPage"
+          :total-pages="totalPages"
+          @page-change="loadProjects"
+        />
+      </div>
+    </template>
 
-    <VustDialog
-      :visible="createVisible"
+    <DockerContentWorkspace
+      v-else-if="viewMode === 'create'"
       :title="t('app.docker.projects.create.title')"
-      width="820px"
-      :close-on-click-overlay="!store.projectMutationLoading"
-      data-ui="project-create-dialog"
-      @close="createVisible = false"
+      :back-label="t('common.back')"
+      :back-disabled="createBusy"
+      return-focus-selector="[data-ui='project-create-button']"
+      data-ui="project-create-view"
+      @back="closeCreate"
     >
-      <div class="project-form" data-slot="body">
+      <div class="project-form">
         <VustAlert v-if="createError" type="error" :title="createError" show-icon />
         <VustFormItem
           :label="t('app.docker.projects.create.name')"
@@ -629,18 +544,39 @@ onUnmounted(() => {
         </div>
       </div>
       <template #footer>
-        <VustButton :disabled="store.projectMutationLoading" @click="createVisible = false">{{
-          t('common.cancel')
-        }}</VustButton>
         <VustButton
           type="primary"
-          :loading="store.projectMutationLoading"
-          :disabled="Boolean(createYamlError)"
+          :loading="createBusy"
+          :disabled="Boolean(createYamlError) || createBusy"
+          data-ui="project-create-submit"
           @click="submitCreate"
-          >{{ t('app.docker.projects.actions.submit') }}</VustButton
         >
+          {{ t('app.docker.projects.actions.submit') }}
+        </VustButton>
       </template>
-    </VustDialog>
+    </DockerContentWorkspace>
+
+    <DockerContentWorkspace
+      v-else-if="store.projectDeploymentProgress"
+      :title="t('app.docker.projects.deploymentProgress.title')"
+      return-focus-selector="[data-ui='restore-deployment-progress']"
+      data-ui="project-create-progress-view"
+    >
+      <DockerProjectDeploymentProgress
+        :task="store.projectDeploymentProgress"
+        :refresh-error="store.projectDeploymentProgressError"
+      />
+      <template #footer>
+        <VustButton data-ui="project-create-progress-back" @click="leaveCreateProgress">
+          {{
+            store.projectDeploymentProgress.status === 'queued' ||
+            store.projectDeploymentProgress.status === 'running'
+              ? t('app.docker.projects.deploymentProgress.background')
+              : t('app.docker.projects.actions.backToList')
+          }}
+        </VustButton>
+      </template>
+    </DockerContentWorkspace>
 
     <DockerProjectDetailDrawer
       v-model="detailVisible"
@@ -744,176 +680,23 @@ onUnmounted(() => {
     </VustDialog>
 
     <VustDialog
-      :visible="Boolean(store.projectDeploymentProgress) && store.projectDeploymentProgressVisible"
+      :visible="
+        Boolean(store.projectDeploymentProgress) &&
+        store.projectDeploymentProgressVisible &&
+        store.projectDeploymentProgress?.operation !== 'create'
+      "
       :title="t('app.docker.projects.deploymentProgress.title')"
       width="760px"
       :close-on-click-overlay="false"
       data-ui="project-deployment-progress-dialog"
       @close="store.closeProjectDeploymentProgress"
     >
-      <div v-if="store.projectDeploymentProgress" class="deployment-progress" data-slot="body">
-        <VustAlert
-          v-if="store.projectDeploymentProgressError"
-          type="warning"
-          :title="t('app.docker.projects.deploymentProgress.refreshFailed')"
-          :description="store.projectDeploymentProgressError"
-          show-icon
-        />
-        <div class="deployment-summary" data-ui="deployment-summary">
-          <div class="deployment-identity" data-ui="deployment-identity">
-            <strong data-ui="deployment-project-name">{{
-              store.projectDeploymentProgress.projectName
-            }}</strong>
-            <div class="deployment-meta">
-              <span>{{
-                t(
-                  `app.docker.projects.deploymentProgress.operations.${store.projectDeploymentProgress.operation}`,
-                )
-              }}</span>
-              <VustTag :type="operationStatusType(store.projectDeploymentProgress.status)">{{
-                t(
-                  `app.docker.projects.deploymentProgress.statuses.${store.projectDeploymentProgress.status}`,
-                )
-              }}</VustTag>
-            </div>
-          </div>
-        </div>
-        <div class="progress-row" data-ui="deployment-overall-progress">
-          <div class="progress-track" aria-hidden="true">
-            <div
-              class="progress-value"
-              :style="{ width: `${store.projectDeploymentProgress.progressPercent}%` }"
-            />
-          </div>
-          <span>{{ store.projectDeploymentProgress.progressPercent }}%</span>
-        </div>
-        <div class="deployment-stage-track" data-ui="deployment-stage-track">
-          <div
-            v-for="step in deploymentStageSteps"
-            :key="step.key"
-            class="deployment-stage-step"
-            :class="`is-${deploymentStageState(step.key)}`"
-          >
-            <span class="deployment-stage-dot" aria-hidden="true" />
-            <span>{{ step.label }}</span>
-          </div>
-        </div>
-        <div
-          v-if="store.projectDeploymentProgress.progressMode === 'text'"
-          class="deployment-compatibility"
-          data-ui="deployment-progress-compatibility"
-        >
-          {{ t('app.docker.projects.deploymentProgress.compatibilityText') }}
-        </div>
-        <div
-          v-else-if="store.projectDeploymentProgress.progressMode === 'unavailable'"
-          class="deployment-compatibility"
-          data-ui="deployment-progress-compatibility"
-        >
-          {{ t('app.docker.projects.deploymentProgress.compatibilityUnavailable') }}
-        </div>
-        <div class="deployment-details" data-ui="deployment-progress-list">
-          <div v-if="deploymentProgressPhases.length" class="deployment-phase-list">
-            <div
-              v-for="group in deploymentProgressPhases"
-              :key="group.phase"
-              class="deployment-phase"
-              :data-slot="`deployment-phase-${group.phase}`"
-            >
-              <div class="deployment-phase-title" data-ui="deployment-phase-title">
-                {{ t(`app.docker.projects.deploymentProgress.phases.${group.phase}`) }}
-              </div>
-              <div class="deployment-item-list">
-                <div
-                  v-for="item in progressRootItems(group.items)"
-                  :key="item.id"
-                  class="deployment-item"
-                  :class="`is-${item.status}`"
-                  data-ui="deployment-progress-item"
-                >
-                  <div class="deployment-item-main">
-                    <div class="deployment-item-identity">
-                      <strong data-ui="deployment-progress-item-label">{{ item.label }}</strong>
-                    </div>
-                    <div class="deployment-item-state">
-                      <VustTag :type="progressStatusType(item.status)">{{
-                        t(`app.docker.projects.deploymentProgress.itemStatuses.${item.status}`)
-                      }}</VustTag>
-                    </div>
-                  </div>
-                  <div
-                    v-if="progressItemPercent(item) !== undefined || item.status === 'working'"
-                    class="deployment-item-progress"
-                  >
-                    <div class="progress-track" aria-hidden="true">
-                      <div
-                        class="progress-value"
-                        :class="{ 'is-indeterminate': progressItemPercent(item) === undefined }"
-                        :style="
-                          progressItemPercent(item) === undefined
-                            ? undefined
-                            : { width: `${progressItemPercent(item)}%` }
-                        "
-                      />
-                    </div>
-                    <span
-                      v-if="progressItemPercentLabel(item)"
-                      data-ui="deployment-progress-item-percent"
-                      >{{ progressItemPercentLabel(item) }}</span
-                    >
-                  </div>
-                  <div v-if="item.details" class="deployment-item-details">
-                    {{ item.details }}
-                  </div>
-                  <div
-                    v-if="progressItemChildren(item.id).length"
-                    class="deployment-child-list"
-                    data-slot="deployment-progress-children"
-                  >
-                    <div
-                      v-for="child in progressItemChildren(item.id)"
-                      :key="child.id"
-                      class="deployment-child-item"
-                      :class="`is-${child.status}`"
-                      data-ui="deployment-progress-layer"
-                    >
-                      <div class="deployment-child-copy">
-                        <strong data-ui="deployment-progress-layer-label">{{ child.label }}</strong>
-                        <span>{{ progressActionLabel(child.action) }}</span>
-                      </div>
-                      <span v-if="progressBytesLabel(child)" class="deployment-bytes">{{
-                        progressBytesLabel(child)
-                      }}</span>
-                      <span
-                        v-if="progressItemPercentLabel(child)"
-                        data-ui="deployment-progress-layer-percent"
-                        >{{ progressItemPercentLabel(child) }}</span
-                      >
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div v-else class="deployment-empty-progress">
-            {{ t('app.docker.projects.deploymentProgress.waitingForDetails') }}
-          </div>
-        </div>
-        <VustAlert
-          v-if="store.projectDeploymentProgress.errorSummary"
-          type="error"
-          :title="t('app.docker.projects.deploymentProgress.failedTitle')"
-          :description="store.projectDeploymentProgress.errorSummary"
-          show-icon
-        />
-        <VustAlert
-          v-if="store.projectDeploymentProgress.cleanupWarning"
-          type="warning"
-          :title="t('app.docker.projects.deploymentProgress.cleanupWarning')"
-          :description="store.projectDeploymentProgress.cleanupWarning"
-          show-icon
-        />
-      </div>
+      <DockerProjectDeploymentProgress
+        v-if="store.projectDeploymentProgress"
+        :task="store.projectDeploymentProgress"
+        :refresh-error="store.projectDeploymentProgressError"
+        data-slot="body"
+      />
       <template #footer>
         <VustButton @click="store.closeProjectDeploymentProgress">{{
           store.projectDeploymentProgress?.status === 'queued' ||
@@ -978,260 +761,10 @@ onUnmounted(() => {
 }
 .project-form,
 .configuration-content,
-.dialog-content,
-.deployment-progress {
+.dialog-content {
   display: flex;
   flex-direction: column;
   gap: var(--vdl-space-4);
-}
-.deployment-progress {
-  min-height: 0;
-}
-.deployment-summary {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--vdl-space-5);
-}
-.deployment-identity {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  gap: var(--vdl-space-2);
-}
-.deployment-identity > strong {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--vdl-font-subtitle);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.deployment-meta {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  gap: var(--vdl-space-2);
-  color: var(--vdl-text-secondary);
-  font-size: var(--vdl-font-body-sm);
-}
-.progress-row {
-  display: flex;
-  align-items: center;
-  gap: var(--vdl-space-3);
-}
-.progress-row > span {
-  width: 44px;
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-.progress-track {
-  flex: 1;
-  height: 8px;
-  overflow: hidden;
-  border-radius: var(--vdl-radius-pill);
-  background: var(--vdl-bg-muted);
-}
-.progress-value {
-  height: 100%;
-  border-radius: inherit;
-  background: var(--vdl-primary);
-  transition: width 180ms ease;
-}
-.progress-value.is-indeterminate {
-  width: 38%;
-  animation: deployment-progress-indeterminate 1.2s ease-in-out infinite;
-}
-.deployment-stage-track {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  padding: var(--vdl-space-1) 0;
-}
-.deployment-stage-step {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--vdl-space-1);
-  color: var(--vdl-text-muted);
-  font-size: var(--vdl-font-caption);
-  text-align: center;
-}
-.deployment-stage-step::before,
-.deployment-stage-step::after {
-  position: absolute;
-  top: 6px;
-  height: 1px;
-  background: var(--vdl-border-default);
-  content: '';
-}
-.deployment-stage-step::before {
-  left: 0;
-  right: 50%;
-}
-.deployment-stage-step::after {
-  left: 50%;
-  right: 0;
-}
-.deployment-stage-step:first-child::before,
-.deployment-stage-step:last-child::after {
-  display: none;
-}
-.deployment-stage-dot {
-  z-index: 1;
-  width: 12px;
-  height: 12px;
-  border: 2px solid var(--vdl-border-default);
-  border-radius: var(--vdl-radius-pill);
-  background: var(--vdl-bg-panel);
-}
-.deployment-stage-step.is-active {
-  color: var(--vdl-text-primary);
-  font-weight: var(--vdl-font-weight-medium);
-}
-.deployment-stage-step.is-active .deployment-stage-dot {
-  border-color: var(--vdl-primary);
-  background: var(--vdl-primary);
-}
-.deployment-stage-step.is-done .deployment-stage-dot {
-  border-color: var(--vdl-success);
-  background: var(--vdl-success);
-}
-.deployment-stage-step.is-error .deployment-stage-dot {
-  border-color: var(--vdl-danger);
-  background: var(--vdl-danger);
-}
-.deployment-stage-step.is-skipped {
-  opacity: 0.6;
-}
-.deployment-compatibility {
-  padding: var(--vdl-space-2) var(--vdl-space-3);
-  border-left: 2px solid var(--vdl-warning);
-  color: var(--vdl-text-secondary);
-  background: var(--vdl-bg-muted);
-  font-size: var(--vdl-font-body-sm);
-}
-.deployment-details,
-.deployment-phase-list,
-.deployment-phase,
-.deployment-item-list {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-.deployment-phase-list {
-  gap: var(--vdl-space-4);
-}
-.deployment-phase {
-  gap: var(--vdl-space-2);
-}
-.deployment-phase-title {
-  color: var(--vdl-text-secondary);
-  font-size: var(--vdl-font-body-sm);
-  font-weight: var(--vdl-font-weight-medium);
-}
-.deployment-item-list {
-  border-top: 1px solid var(--vdl-border-subtle);
-}
-.deployment-item {
-  padding: var(--vdl-space-3) 0;
-  border-bottom: 1px solid var(--vdl-border-subtle);
-}
-.deployment-item-main,
-.deployment-item-state,
-.deployment-item-progress,
-.deployment-child-item {
-  display: flex;
-  align-items: center;
-}
-.deployment-item-main {
-  justify-content: space-between;
-  gap: var(--vdl-space-4);
-}
-.deployment-item-identity {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: 2px;
-}
-.deployment-item-identity strong,
-.deployment-child-copy strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.deployment-item-identity span,
-.deployment-child-copy span,
-.deployment-item-details,
-.deployment-bytes {
-  color: var(--vdl-text-muted);
-  font-size: var(--vdl-font-caption);
-}
-.deployment-item-state {
-  min-width: 64px;
-  flex-shrink: 0;
-  justify-content: flex-end;
-  gap: var(--vdl-space-3);
-}
-.deployment-bytes {
-  font-family: var(--vdl-font-mono);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.deployment-item-progress {
-  gap: var(--vdl-space-2);
-  margin-top: var(--vdl-space-2);
-  font-size: var(--vdl-font-caption);
-  font-variant-numeric: tabular-nums;
-}
-.deployment-item-progress > span {
-  width: 36px;
-  color: var(--vdl-text-muted);
-  text-align: right;
-}
-.deployment-item-details {
-  margin-top: var(--vdl-space-2);
-  overflow-wrap: anywhere;
-}
-.deployment-child-list {
-  margin-top: var(--vdl-space-2);
-  padding-left: var(--vdl-space-3);
-  border-left: 1px solid var(--vdl-border-default);
-}
-.deployment-child-item {
-  min-height: 28px;
-  gap: var(--vdl-space-3);
-  color: var(--vdl-text-secondary);
-  font-size: var(--vdl-font-caption);
-}
-.deployment-child-copy {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  gap: var(--vdl-space-2);
-}
-.deployment-child-copy strong {
-  max-width: 45%;
-}
-.deployment-child-item > span:last-child {
-  min-width: 36px;
-  text-align: right;
-}
-.deployment-empty-progress {
-  padding: var(--vdl-space-5);
-  border: 1px dashed var(--vdl-border-default);
-  color: var(--vdl-text-muted);
-  font-size: var(--vdl-font-body-sm);
-  text-align: center;
-}
-@keyframes deployment-progress-indeterminate {
-  0% {
-    transform: translateX(-110%);
-  }
-  100% {
-    transform: translateX(300%);
-  }
 }
 :deep([data-ui='project-deployment-progress-dialog'] .vl-dialog-body) {
   scrollbar-gutter: stable;
@@ -1281,30 +814,6 @@ onUnmounted(() => {
   }
   .toolbar-actions {
     justify-content: flex-end;
-  }
-  .deployment-summary {
-    gap: var(--vdl-space-3);
-  }
-  .deployment-item-main {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: var(--vdl-space-2);
-  }
-  .deployment-item-state {
-    width: 100%;
-    justify-content: space-between;
-  }
-  .deployment-child-copy {
-    flex-direction: column;
-    gap: 0;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .progress-value {
-    transition: none;
-  }
-  .progress-value.is-indeterminate {
-    animation: none;
   }
 }
 </style>

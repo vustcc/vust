@@ -1,6 +1,6 @@
 import { defineComponent, h, nextTick, reactive } from 'vue'
 import { createI18n } from 'vue-i18n'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DockerProjectTask } from '@/api/interface/docker'
 import en from '@/locales/en'
@@ -53,6 +53,11 @@ const activeTask = (): DockerProjectTask => ({
   createdAt: 1,
 })
 
+const activeCreateTask = (): DockerProjectTask => ({
+  ...activeTask(),
+  operation: 'create',
+})
+
 const setupStore = (task: DockerProjectTask | null = null) => {
   state.docker = reactive({
     composeProjects: [],
@@ -71,10 +76,16 @@ const setupStore = (task: DockerProjectTask | null = null) => {
     fetchComposeProjects: vi.fn().mockResolvedValue(true),
     recoverActiveComposeDeployment: vi.fn().mockResolvedValue(true),
     stopProjectOperationPolling: vi.fn(),
-    openProjectDeploymentProgress: vi.fn(),
-    closeProjectDeploymentProgress: vi.fn(),
+    openProjectDeploymentProgress: vi.fn(() => {
+      state.docker.projectDeploymentProgressVisible = true
+    }),
+    closeProjectDeploymentProgress: vi.fn(() => {
+      state.docker.projectDeploymentProgressVisible = false
+    }),
     clearComposeProjectDetail: vi.fn(),
     clearComposeProjectConfiguration: vi.fn(),
+    validateComposeYaml: vi.fn().mockResolvedValue({ valid: true }),
+    createComposeProject: vi.fn().mockResolvedValue(false),
     redeployComposeProject: vi.fn().mockResolvedValue(true),
   })
 }
@@ -125,31 +136,35 @@ describe('DockerProjects deployment dialogs', () => {
     wrapper.unmount()
   })
 
-  it('创建项目时实时校验 YAML 语法并阻止提交', async () => {
+  it('在内容区创建项目并实时校验 YAML 语法', async () => {
     const wrapper = mountView()
     const vm = wrapper.vm as unknown as {
       openCreate: () => void
     }
     vm.openCreate()
     await nextTick()
-    const editor = document.body.querySelector(
-      '[data-ui="project-create-dialog"] [data-ui="monaco-editor-stub"]',
-    ) as HTMLTextAreaElement
+    expect(wrapper.find('[data-ui="project-create-view"]').exists()).toBe(true)
+    expect(wrapper.find('[data-ui="toolbar"]').exists()).toBe(false)
+    expect(document.body.querySelector('[data-ui="project-create-dialog"]')).toBeNull()
+    expect(wrapper.find('[data-ui="workspace-header-back"]').text()).toBe('返回')
+    expect(wrapper.findAll('[data-slot="footer"] button')).toHaveLength(1)
+    const editor = wrapper.find('[data-ui="monaco-editor-stub"]').element as HTMLTextAreaElement
     const invalidYaml =
       'services:\n  app:\n    image: nginx:latest\n    name: test\n    user: admin\n    asdsdas'
     editor.value = invalidYaml
     editor.dispatchEvent(new Event('input', { bubbles: true }))
     await nextTick()
 
-    const dialog = document.body.querySelector('[data-ui="project-create-dialog"]')
-    const syntaxErrorElement = dialog?.querySelector('[data-ui="compose-yaml-error"]')
+    const createView = wrapper.find('[data-ui="project-create-view"]')
+    const syntaxErrorElement = createView.element.querySelector('[data-ui="compose-yaml-error"]')
     const syntaxError = syntaxErrorElement?.textContent ?? ''
     expect(syntaxErrorElement?.tagName).toBe('H4')
     expect(syntaxErrorElement?.querySelector('.vl-alert-icon')).toBeNull()
     expect(syntaxError).toContain('YAML syntax error at line 6, column 12:')
     expect(syntaxError).not.toContain('\n 3 |')
     expect(
-      (dialog?.querySelector('.vl-dialog-footer button:last-child') as HTMLButtonElement).disabled,
+      (createView.element.querySelector('[data-ui="project-create-submit"]') as HTMLButtonElement)
+        .disabled,
     ).toBe(true)
 
     const validYaml = 'services:\n  app:\n    image: nginx:latest\n'
@@ -157,10 +172,92 @@ describe('DockerProjects deployment dialogs', () => {
     editor.dispatchEvent(new Event('input', { bubbles: true }))
     await nextTick()
 
-    expect(dialog?.querySelector('[data-ui="compose-yaml-error"]')).toBeNull()
+    expect(createView.element.querySelector('[data-ui="compose-yaml-error"]')).toBeNull()
     expect(
-      (dialog?.querySelector('.vl-dialog-footer button:last-child') as HTMLButtonElement).disabled,
+      (createView.element.querySelector('[data-ui="project-create-submit"]') as HTMLButtonElement)
+        .disabled,
     ).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('从创建页返回列表时清理临时表单', async () => {
+    const wrapper = mountView()
+    ;(wrapper.vm as unknown as { openCreate: () => void }).openCreate()
+    await nextTick()
+
+    await wrapper.find('#docker-project-name').setValue('discard-me')
+    await wrapper.find('[data-ui="workspace-header-back"]').trigger('click')
+
+    expect(wrapper.find('[data-ui="project-create-view"]').exists()).toBe(false)
+    expect(wrapper.find('[data-ui="toolbar"]').exists()).toBe(true)
+    ;(wrapper.vm as unknown as { openCreate: () => void }).openCreate()
+    await nextTick()
+    expect((wrapper.find('#docker-project-name').element as HTMLInputElement).value).toBe('')
+    wrapper.unmount()
+  })
+
+  it('语义校验期间禁止返回并使用提交时的表单快照', async () => {
+    let resolveValidation: ((value: { valid: boolean }) => void) | undefined
+    ;(state.docker.validateComposeYaml as ReturnType<typeof vi.fn>).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveValidation = resolve
+        }),
+    )
+    const wrapper = mountView()
+    ;(wrapper.vm as unknown as { openCreate: () => void }).openCreate()
+    await nextTick()
+    await wrapper.find('#docker-project-name').setValue('snapshot-project')
+    await wrapper
+      .find('[data-ui="monaco-editor-stub"]')
+      .setValue('services:\n  app:\n    image: nginx:latest\n')
+
+    await wrapper.find('[data-ui="project-create-submit"]').trigger('click')
+    await nextTick()
+    expect(wrapper.find('[data-ui="workspace-header-back"]').attributes('disabled')).toBeDefined()
+    await wrapper.find('[data-ui="workspace-header-back"]').trigger('click')
+    expect(wrapper.find('[data-ui="project-create-view"]').exists()).toBe(true)
+
+    resolveValidation?.({ valid: true })
+    await flushPromises()
+    expect(state.docker.createComposeProject).toHaveBeenCalledWith({
+      name: 'snapshot-project',
+      composeYaml: 'services:\n  app:\n    image: nginx:latest\n',
+    })
+    wrapper.unmount()
+  })
+
+  it('创建提交成功后以内嵌方式展示进度并支持转入后台恢复', async () => {
+    const task = activeCreateTask()
+    setupStore()
+    ;(state.docker.createComposeProject as ReturnType<typeof vi.fn>).mockImplementation(
+      async () => {
+        state.docker.projectDeploymentProgress = task
+        state.docker.projectDeploymentProgressVisible = true
+        return true
+      },
+    )
+    const wrapper = mountView()
+    ;(wrapper.vm as unknown as { openCreate: () => void }).openCreate()
+    await nextTick()
+
+    await wrapper.find('#docker-project-name').setValue('demo-project')
+    const editor = wrapper.find('[data-ui="monaco-editor-stub"]')
+    await editor.setValue('services:\n  app:\n    image: nginx:latest\n')
+    await wrapper.find('[data-ui="project-create-submit"]').trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('[data-ui="project-create-progress-view"]').exists()).toBe(true)
+    expect(wrapper.find('[data-ui="deployment-project-name"]').text()).toContain('demo-project')
+    expect(document.body.querySelector('[data-ui="project-deployment-progress-dialog"]')).toBeNull()
+
+    await wrapper.find('[data-ui="project-create-progress-back"]').trigger('click')
+    expect(wrapper.find('[data-ui="toolbar"]').exists()).toBe(true)
+    expect(state.docker.closeProjectDeploymentProgress).toHaveBeenCalledOnce()
+
+    await wrapper.find('[data-ui="restore-deployment-progress"]').trigger('click')
+    expect(wrapper.find('[data-ui="project-create-progress-view"]').exists()).toBe(true)
+    expect(state.docker.openProjectDeploymentProgress).toHaveBeenCalledOnce()
     wrapper.unmount()
   })
 

@@ -14,13 +14,13 @@ import { formatImageTags, formatBytes, formatDockerImageBytes } from '@/utils/do
 import {
   VustAlert,
   VustButton,
-  VustDialog,
   VustEmpty,
   VustInput,
   VustLoading,
   VustTable,
   VustTag,
 } from '@/components/ui'
+import DockerContentWorkspace from './DockerContentWorkspace.vue'
 import type { VustTableColumn } from '@/components/ui/VustTable.vue'
 import type { DockerImageSummary } from '@/api/interface/docker'
 
@@ -30,7 +30,7 @@ const nodeStore = useNodeStore()
 const toastStore = useToastStore()
 const searchQuery = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
-const importVisible = ref(false)
+const viewMode = ref<'list' | 'import'>('list')
 const importFile = ref<File | null>(null)
 const importError = ref('')
 const importInProgress = ref(false)
@@ -117,7 +117,7 @@ function validateImageArchive(file: File): string {
   return ''
 }
 
-/** 清理弹窗内的临时文件和上传状态。 */
+/** 清理导入视图内的临时文件和上传状态。 */
 function resetImportState() {
   importFile.value = null
   importError.value = ''
@@ -128,13 +128,13 @@ function resetImportState() {
   if (fileInput.value) fileInput.value.value = ''
 }
 
-/** 打开镜像归档导入弹窗并固定本次操作的目标节点。 */
-function openImportDialog() {
+/** 打开镜像归档导入视图并固定本次操作的目标节点。 */
+function openImportView() {
   resetImportState()
   const nodeId = nodeStore.currentNodeId || 'local'
   importTargetNodeId.value = nodeId
   importTargetNodeName.value = nodeStore.nodes.find((node) => node.id === nodeId)?.name || nodeId
-  importVisible.value = true
+  viewMode.value = 'import'
 }
 
 /** 打开原生文件选择器。 */
@@ -159,11 +159,11 @@ function handleImportFileChange(event: Event) {
   importFile.value = file
 }
 
-/** 中止当前上传并关闭弹窗；用户主动取消时提供中性反馈。 */
-function closeImportDialog(showFeedback = true) {
+/** 中止当前上传并返回列表；用户主动取消时提供中性反馈。 */
+function closeImportView(showFeedback = true) {
   const wasInProgress = importInProgress.value
   importAbortController?.abort()
-  importVisible.value = false
+  viewMode.value = 'list'
   resetImportState()
   if (wasInProgress && showFeedback) {
     toastStore.info(t('app.docker.images.archiveImport.cancelled'))
@@ -205,7 +205,7 @@ async function startImageImport() {
     }
     if (nodeStore.currentNodeId !== targetNodeId) return
 
-    importVisible.value = false
+    viewMode.value = 'list'
     resetImportState()
     toastStore.success(t('app.docker.images.archiveImport.success'))
     await Promise.allSettled([store.fetchImagesList(), store.fetchOverviewData()])
@@ -226,9 +226,9 @@ watch(
   () => nodeStore.currentNodeId,
   (nodeId) => {
     searchQuery.value = ''
-    if (importVisible.value && nodeId !== importTargetNodeId.value) {
+    if (viewMode.value === 'import' && nodeId !== importTargetNodeId.value) {
       const wasInProgress = importInProgress.value
-      closeImportDialog(false)
+      closeImportView(false)
       if (wasInProgress) {
         toastStore.info(t('app.docker.images.archiveImport.nodeChangedCancelled'))
       }
@@ -248,101 +248,103 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="image-list-page" data-page="docker-image-list">
-    <div class="image-toolbar" data-ui="toolbar">
-      <VustInput
-        id="docker-local-image-search"
-        v-model="searchQuery"
-        name="docker-local-image-search"
-        :placeholder="t('app.docker.images.searchPlaceholder')"
-        clearable
-        class="search-input"
-        data-ui="image-search-input"
-      />
-      <div class="image-toolbar-actions" data-slot="actions">
-        <VustButton
-          type="primary"
-          size="small"
-          data-ui="image-import-button"
-          @click="openImportDialog"
-        >
-          {{ t('app.docker.images.archiveImport.action') }}
-        </VustButton>
-        <VustButton
-          size="small"
-          :loading="store.imageListLoading"
-          data-ui="image-refresh-button"
-          @click="store.fetchImagesList"
-        >
-          {{ t('common.refresh') }}
-        </VustButton>
-      </div>
-    </div>
-
-    <VustAlert
-      v-if="store.imageListError"
-      type="warning"
-      :title="t('app.docker.images.refreshFailed')"
-      :description="store.imageListError"
-      show-icon
-      data-ui="image-list-error"
-    />
-
-    <div class="image-table-shell" data-ui="table">
-      <VustTable v-if="filteredImages.length" :data="filteredImages" :columns="columns" border>
-        <template #tags="{ row }: { row: DockerImageSummary }">
-          <div class="resource-name-cell">
-            <span :title="formatImageTags(row.tags)">{{ formatImageTags(row.tags) }}</span>
-            <VustTag v-if="row.dangling" type="warning" size="small">
-              {{ t('app.docker.images.dangling') }}
-            </VustTag>
-          </div>
-        </template>
-        <template #id="{ row }: { row: DockerImageSummary }">
-          <span class="image-id" :title="row.id">{{ shortImageId(row.id) }}</span>
-        </template>
-        <template #size="{ row }: { row: DockerImageSummary }">
-          {{ formatDockerImageBytes(row.sizeBytes) }}
-        </template>
-        <template #containers="{ row }: { row: DockerImageSummary }">
-          <VustTag type="info">{{ row.containerCount }}</VustTag>
-        </template>
-        <template #createdAt="{ row }: { row: DockerImageSummary }">
-          {{ formatCreatedAt(row.createdAt) }}
-        </template>
-        <template #actions="{ row }: { row: DockerImageSummary }">
+    <template v-if="viewMode === 'list'">
+      <div class="image-toolbar" data-ui="toolbar">
+        <VustInput
+          id="docker-local-image-search"
+          v-model="searchQuery"
+          name="docker-local-image-search"
+          :placeholder="t('app.docker.images.searchPlaceholder')"
+          clearable
+          class="search-input"
+          data-ui="image-search-input"
+        />
+        <div class="image-toolbar-actions" data-slot="actions">
           <VustButton
-            type="danger"
+            type="primary"
             size="small"
-            :loading="store.imageDeleteLoadingId === row.id"
-            :disabled="row.containerCount > 0 || Boolean(store.imageDeleteLoadingId)"
-            :title="
-              row.containerCount > 0
-                ? t('app.docker.images.actions.inUse', { count: row.containerCount })
-                : undefined
-            "
-            data-ui="image-delete-button"
-            @click="store.handleDeleteImage(row.id)"
+            data-ui="image-import-button"
+            @click="openImportView"
           >
-            {{ t('app.docker.images.actions.delete') }}
+            {{ t('app.docker.images.archiveImport.action') }}
           </VustButton>
-        </template>
-      </VustTable>
-      <VustEmpty
-        v-else-if="!store.imageListLoading"
-        :description="
-          searchQuery ? t('app.docker.images.filteredEmpty') : t('app.docker.images.emptyLocal')
-        "
-      />
-      <VustLoading :loading="store.imageListLoading && !store.imagesList.length" cover />
-    </div>
+          <VustButton
+            size="small"
+            :loading="store.imageListLoading"
+            data-ui="image-refresh-button"
+            @click="store.fetchImagesList"
+          >
+            {{ t('common.refresh') }}
+          </VustButton>
+        </div>
+      </div>
 
-    <VustDialog
-      :visible="importVisible"
+      <VustAlert
+        v-if="store.imageListError"
+        type="warning"
+        :title="t('app.docker.images.refreshFailed')"
+        :description="store.imageListError"
+        show-icon
+        data-ui="image-list-error"
+      />
+
+      <div class="image-table-shell" data-ui="table">
+        <VustTable v-if="filteredImages.length" :data="filteredImages" :columns="columns" border>
+          <template #tags="{ row }: { row: DockerImageSummary }">
+            <div class="resource-name-cell">
+              <span :title="formatImageTags(row.tags)">{{ formatImageTags(row.tags) }}</span>
+              <VustTag v-if="row.dangling" type="warning" size="small">
+                {{ t('app.docker.images.dangling') }}
+              </VustTag>
+            </div>
+          </template>
+          <template #id="{ row }: { row: DockerImageSummary }">
+            <span class="image-id" :title="row.id">{{ shortImageId(row.id) }}</span>
+          </template>
+          <template #size="{ row }: { row: DockerImageSummary }">
+            {{ formatDockerImageBytes(row.sizeBytes) }}
+          </template>
+          <template #containers="{ row }: { row: DockerImageSummary }">
+            <VustTag type="info">{{ row.containerCount }}</VustTag>
+          </template>
+          <template #createdAt="{ row }: { row: DockerImageSummary }">
+            {{ formatCreatedAt(row.createdAt) }}
+          </template>
+          <template #actions="{ row }: { row: DockerImageSummary }">
+            <VustButton
+              type="danger"
+              size="small"
+              :loading="store.imageDeleteLoadingId === row.id"
+              :disabled="row.containerCount > 0 || Boolean(store.imageDeleteLoadingId)"
+              :title="
+                row.containerCount > 0
+                  ? t('app.docker.images.actions.inUse', { count: row.containerCount })
+                  : undefined
+              "
+              data-ui="image-delete-button"
+              @click="store.handleDeleteImage(row.id)"
+            >
+              {{ t('app.docker.images.actions.delete') }}
+            </VustButton>
+          </template>
+        </VustTable>
+        <VustEmpty
+          v-else-if="!store.imageListLoading"
+          :description="
+            searchQuery ? t('app.docker.images.filteredEmpty') : t('app.docker.images.emptyLocal')
+          "
+        />
+        <VustLoading :loading="store.imageListLoading && !store.imagesList.length" cover />
+      </div>
+    </template>
+
+    <DockerContentWorkspace
+      v-else
       :title="t('app.docker.images.archiveImport.title')"
-      width="600px"
-      :close-on-click-overlay="false"
-      data-ui="image-import-dialog"
-      @close="closeImportDialog"
+      :back-label="t('common.back')"
+      return-focus-selector="[data-ui='image-import-button']"
+      data-ui="image-import-view"
+      @back="closeImportView()"
     >
       <div class="image-import-body" data-slot="body">
         <VustAlert
@@ -422,9 +424,6 @@ onBeforeUnmount(() => {
       </div>
 
       <template #footer>
-        <VustButton @click="closeImportDialog()">
-          {{ t('common.cancel') }}
-        </VustButton>
         <VustButton
           type="primary"
           :loading="importInProgress"
@@ -435,7 +434,7 @@ onBeforeUnmount(() => {
           {{ t('app.docker.images.archiveImport.submit') }}
         </VustButton>
       </template>
-    </VustDialog>
+    </DockerContentWorkspace>
   </div>
 </template>
 

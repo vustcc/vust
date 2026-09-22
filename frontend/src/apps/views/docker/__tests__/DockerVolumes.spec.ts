@@ -64,7 +64,7 @@ describe('DockerVolumes 托管卷操作', () => {
       fetchVolumes: vi.fn(),
       fetchVolumeDetail: vi.fn(),
       clearVolumeDetail: vi.fn(),
-      createVolume: vi.fn(),
+      createVolume: vi.fn().mockResolvedValue(false),
       removeVolume: vi.fn().mockResolvedValue(true),
     })
     state.node = reactive({ currentNodeId: 'local' })
@@ -109,6 +109,46 @@ describe('DockerVolumes 托管卷操作', () => {
     expect(state.docker.removeVolume).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'custom-data' }),
     )
+    wrapper.unmount()
+  })
+
+  it('在内容区切换创建视图，返回后恢复列表并清理草稿', async () => {
+    const wrapper = mountView()
+    expect(wrapper.find('[data-ui="volume-create-button"]').text()).toBe('创建数据卷')
+
+    await wrapper.find('[data-ui="volume-create-button"]').trigger('click')
+    expect(wrapper.find('[data-ui="volume-create-view"]').exists()).toBe(true)
+    expect(wrapper.find('[data-ui="toolbar"]').exists()).toBe(false)
+    expect(document.body.querySelector('[data-ui="volume-create-dialog"]')).toBeNull()
+
+    await wrapper.find('#docker-volume-name').setValue('temporary-volume')
+    expect(wrapper.find('[data-ui="workspace-header-back"]').text()).toBe('返回')
+    expect(wrapper.find('[data-ui="volume-create-back"]').exists()).toBe(false)
+    await wrapper.find('[data-ui="workspace-header-back"]').trigger('click')
+    expect(wrapper.find('[data-ui="toolbar"]').exists()).toBe(true)
+
+    await wrapper.find('[data-ui="volume-create-button"]').trigger('click')
+    expect((wrapper.find('#docker-volume-name').element as HTMLInputElement).value).toBe('')
+    wrapper.unmount()
+  })
+
+  it('创建失败保留表单，成功后返回列表', async () => {
+    const wrapper = mountView()
+    await wrapper.find('[data-ui="volume-create-button"]').trigger('click')
+    await wrapper.find('#docker-volume-name').setValue('persistent-data')
+    await wrapper.find('[data-ui="volume-create-submit"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-ui="volume-create-view"]').exists()).toBe(true)
+    ;(state.docker.createVolume as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true)
+    await wrapper.find('[data-ui="volume-create-submit"]').trigger('click')
+    await flushPromises()
+    expect(state.docker.createVolume).toHaveBeenLastCalledWith({
+      name: 'persistent-data',
+      options: undefined,
+      labels: undefined,
+    })
+    expect(wrapper.find('[data-ui="volume-create-view"]').exists()).toBe(false)
+    expect(wrapper.find('[data-ui="toolbar"]').exists()).toBe(true)
     wrapper.unmount()
   })
 })

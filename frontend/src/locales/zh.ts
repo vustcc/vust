@@ -65,6 +65,7 @@ const zh: typeof en = {
   common: {
     search: '搜索',
     create: '创建',
+    back: '返回',
     actions: '操作',
     start: '启动',
     stop: '停止',
@@ -726,6 +727,7 @@ const zh: typeof en = {
         actions: {
           create: '创建项目',
           submit: '部署',
+          backToList: '返回列表',
           menu: '操作',
           editCompose: '修改配置',
           redeploy: '重新部署',
@@ -1088,7 +1090,7 @@ const zh: typeof en = {
           configOnly: '仅配置',
         },
         actions: {
-          create: '新增网络',
+          create: '创建网络',
           cancel: '取消',
           submit: '创建网络',
           menu: '操作',
@@ -1099,7 +1101,7 @@ const zh: typeof en = {
             '确认删除托管网络“{name}”吗？所属项目或套件状态可能不一致，后续部署可能重新创建。',
         },
         create: {
-          title: '新增网络',
+          title: '创建网络',
           name: '网络名称',
           namePlaceholder: '例如：my-network',
           driver: '驱动',
@@ -1179,14 +1181,14 @@ const zh: typeof en = {
           custom: '自定义',
         },
         actions: {
-          create: '新建数据卷',
+          create: '创建数据卷',
           submit: '创建',
           menu: '操作',
           view: '查看',
           delete: '删除',
         },
         create: {
-          title: '新建数据卷',
+          title: '创建数据卷',
           name: '数据卷名称',
           namePlaceholder: '例如：my-volume',
           showAdvanced: '显示高级设置',

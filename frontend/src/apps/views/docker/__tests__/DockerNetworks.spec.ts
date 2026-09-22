@@ -97,7 +97,7 @@ describe('DockerNetworks 托管网络操作', () => {
         }
       }),
       clearNetworkDetail: vi.fn(),
-      createNetwork: vi.fn(),
+      createNetwork: vi.fn().mockResolvedValue(false),
       removeNetwork: vi.fn().mockResolvedValue(true),
       connectNetwork: vi.fn(),
       disconnectNetwork: vi.fn(),
@@ -143,6 +143,48 @@ describe('DockerNetworks 托管网络操作', () => {
       return actions.some((action) => action.label === '断开连接')
     })
     expect(connectionActions).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('在内容区切换创建视图，返回后恢复列表并清理草稿', async () => {
+    const wrapper = mountView()
+    expect(wrapper.find('[data-ui="network-create-button"]').text()).toBe('创建网络')
+
+    await wrapper.find('[data-ui="network-create-button"]').trigger('click')
+    expect(wrapper.find('[data-ui="network-create-view"]').exists()).toBe(true)
+    expect(wrapper.find('[data-ui="toolbar"]').exists()).toBe(false)
+    expect(document.body.querySelector('[data-ui="network-create-dialog"]')).toBeNull()
+
+    await wrapper.find('#docker-network-name').setValue('temporary-network')
+    expect(wrapper.find('[data-ui="workspace-header-back"]').text()).toBe('返回')
+    expect(wrapper.find('[data-ui="network-create-back"]').exists()).toBe(false)
+    await wrapper.find('[data-ui="workspace-header-back"]').trigger('click')
+    expect(wrapper.find('[data-ui="toolbar"]').exists()).toBe(true)
+
+    await wrapper.find('[data-ui="network-create-button"]').trigger('click')
+    expect((wrapper.find('#docker-network-name').element as HTMLInputElement).value).toBe('')
+    wrapper.unmount()
+  })
+
+  it('创建失败保留表单，成功后返回列表', async () => {
+    const wrapper = mountView()
+    await wrapper.find('[data-ui="network-create-button"]').trigger('click')
+    await wrapper.find('#docker-network-name').setValue('isolated-network')
+    await wrapper.find('[data-ui="network-create-submit"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-ui="network-create-view"]').exists()).toBe(true)
+    ;(state.docker.createNetwork as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true)
+    await wrapper.find('[data-ui="network-create-submit"]').trigger('click')
+    await flushPromises()
+    expect(state.docker.createNetwork).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        name: 'isolated-network',
+        internal: false,
+        enableIpv6: false,
+      }),
+    )
+    expect(wrapper.find('[data-ui="network-create-view"]').exists()).toBe(false)
+    expect(wrapper.find('[data-ui="toolbar"]').exists()).toBe(true)
     wrapper.unmount()
   })
 })

@@ -64,6 +64,7 @@ const en = {
   common: {
     search: 'Search',
     create: 'Create',
+    back: 'Back',
     actions: 'Actions',
     start: 'Start',
     stop: 'Stop',
@@ -744,6 +745,7 @@ const en = {
         actions: {
           create: 'Create Project',
           submit: 'Deploy',
+          backToList: 'Back to List',
           menu: 'Actions',
           editCompose: 'Edit Configuration',
           redeploy: 'Redeploy',
@@ -1111,7 +1113,7 @@ const en = {
           configOnly: 'Configuration-only',
         },
         actions: {
-          create: 'New Network',
+          create: 'Create Network',
           cancel: 'Cancel',
           submit: 'Create',
           menu: 'Actions',
@@ -1122,7 +1124,7 @@ const en = {
             'Delete managed network “{name}”? Its project or suite may become inconsistent and recreate it during a later deployment.',
         },
         create: {
-          title: 'New Network',
+          title: 'Create Network',
           name: 'Network Name',
           namePlaceholder: 'e.g., my-network',
           driver: 'Driver',
@@ -1203,7 +1205,7 @@ const en = {
           custom: 'Custom',
         },
         actions: {
-          create: 'New Volume',
+          create: 'Create Volume',
           submit: 'Create',
           menu: 'Actions',
           view: 'View',
