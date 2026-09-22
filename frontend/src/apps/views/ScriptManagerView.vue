@@ -9,10 +9,12 @@ import { useI18n } from 'vue-i18n'
 import type { ScriptDetail, ScriptSummary } from '@/api/modules/scripts'
 import type { ScriptRunTerminalServerMessage } from '@/api/generated/scripts'
 import { useScriptLibrary } from '@/composables/useScriptLibrary'
-import { useConfirmationModalStore } from '@/stores/confirmation-modal'
+import { useApplicationConfirmation } from '@/composables/useApplicationConfirmation'
 import { useToastStore } from '@/stores/toast'
 import { useWindowManagerStore } from '@/stores/window-manager'
 import MonacoEditor from '@/components/editor/MonacoEditor.vue'
+import ApplicationDialog from '@/components/layout/ApplicationDialog.vue'
+import ApplicationConfirmationDialog from '@/components/layout/ApplicationConfirmationDialog.vue'
 import ScriptRunTerminal from './scripts/ScriptRunTerminal.vue'
 import VustIcon from '@/components/icons/VustIcon.vue'
 import {
@@ -20,7 +22,6 @@ import {
   VustAlert,
   VustButton,
   VustCheckbox,
-  VustDialog,
   VustEmpty,
   VustFormItem,
   VustInput,
@@ -36,7 +37,8 @@ import type { VustTableColumn } from '@/components/ui/VustTable.vue'
 const props = defineProps<{ windowId?: string }>()
 const { t } = useI18n()
 const library = useScriptLibrary()
-const confirmation = useConfirmationModalStore()
+const { confirmationState, showConfirmation, handleConfirmationResponse } =
+  useApplicationConfirmation()
 const notifications = useToastStore()
 const windowStore = useWindowManagerStore()
 
@@ -53,6 +55,7 @@ interface ScriptMenuAction {
 const editorMode = ref<EditorMode>('create')
 const editingScriptId = ref('')
 const formDialogVisible = ref(false)
+const formReturnFocusSelector = ref('')
 const readonlyDialogVisible = ref(false)
 const readonlyDetail = ref<ScriptDetail | null>(null)
 const baseline = ref('')
@@ -69,6 +72,7 @@ const runNodeId = ref('')
 const runTimeoutSeconds = ref(300)
 const runTerminal = ref<InstanceType<typeof ScriptRunTerminal> | null>(null)
 const remainingSeconds = ref<number | null>(null)
+const confirmationReturnFocusSelector = ref('')
 let countdownTimer: number | null = null
 const stopCountdown = () => {
   if (countdownTimer !== null) window.clearInterval(countdownTimer)
@@ -78,6 +82,16 @@ const stopCountdown = () => {
 
 const formSnapshot = computed(() => JSON.stringify(form.value))
 const isDirty = computed(() => formDialogVisible.value && formSnapshot.value !== baseline.value)
+const savePending = computed(() => library.isActionPending('save'))
+const runDialogBusy = computed(() => {
+  const startPending = runScript.value
+    ? library.isActionPending(`run:${runScript.value.scriptId}`)
+    : false
+  const dismissPending = library.currentRun.value
+    ? library.isActionPending(`dismiss:${library.currentRun.value.runId}`)
+    : false
+  return startPending || dismissPending
+})
 const totalPages = computed(() =>
   Math.max(1, Math.ceil(library.total.value / library.filters.pageSize)),
 )
@@ -156,11 +170,13 @@ const fillForm = (detail: ScriptDetail, name = detail.name) => {
 
 const confirmDiscard = async () => {
   if (!isDirty.value) return true
-  return confirmation.showConfirmation(
+  confirmationReturnFocusSelector.value = '[data-ui="script-form-dialog"]'
+  return showConfirmation(
     t('app.scriptManager.unsaved.message'),
     t('app.scriptManager.unsaved.title'),
     t('app.scriptManager.unsaved.discard'),
     t('common.cancel'),
+    'danger',
   )
 }
 
@@ -192,6 +208,7 @@ const startCreate = () => {
     timeoutSeconds: 300,
   }
   baseline.value = JSON.stringify(form.value)
+  formReturnFocusSelector.value = '[data-ui="script-create"]'
   formDialogVisible.value = true
 }
 
@@ -202,6 +219,7 @@ const startEdit = async (script: ScriptSummary) => {
   editorMode.value = 'edit'
   editingScriptId.value = detail.scriptId
   fillForm(detail)
+  formReturnFocusSelector.value = '[data-ui="table"]'
   formDialogVisible.value = true
 }
 
@@ -212,6 +230,7 @@ const startClone = async (script: ScriptSummary) => {
   editorMode.value = 'clone'
   editingScriptId.value = ''
   fillForm(detail, t('app.scriptManager.cloneName', { name: detail.name }))
+  formReturnFocusSelector.value = '[data-ui="table"]'
   formDialogVisible.value = true
 }
 
@@ -254,11 +273,13 @@ const save = async () => {
 
 const remove = async (script: ScriptSummary) => {
   if (!script.capabilities.canRemove) return
-  const confirmed = await confirmation.showConfirmation(
+  confirmationReturnFocusSelector.value = '[data-ui="table"]'
+  const confirmed = await showConfirmation(
     t('app.scriptManager.delete.message', { name: script.name }),
     t('app.scriptManager.delete.title'),
     t('app.scriptManager.delete.confirm'),
     t('common.cancel'),
+    'danger',
   )
   if (!confirmed) return
   try {
@@ -305,11 +326,13 @@ const closeRun = async () => {
   )
     return
   if (run && library.isRunActive.value) {
-    const confirmed = await confirmation.showConfirmation(
+    confirmationReturnFocusSelector.value = '[data-ui="run-dialog"]'
+    const confirmed = await showConfirmation(
       t('app.scriptManager.runDialog.closeMessage'),
       t('app.scriptManager.runDialog.closeTitle'),
       t('app.scriptManager.runDialog.cancelAndClose'),
       t('common.cancel'),
+      'danger',
     )
     if (!confirmed) return
   }
@@ -446,7 +469,7 @@ onBeforeUnmount(() => {
         </button>
       </div>
       <div class="toolbar-actions">
-        <VustButton type="primary" @click="startCreate">
+        <VustButton type="primary" data-ui="script-create" @click="startCreate">
           {{ t('app.scriptManager.actions.create') }}
         </VustButton>
       </div>
@@ -472,6 +495,7 @@ onBeforeUnmount(() => {
     <div class="table-shell" data-slot="content">
       <VustTable
         data-ui="table"
+        tabindex="-1"
         :data="library.scripts.value"
         :columns="columns"
         row-key="scriptId"
@@ -529,12 +553,13 @@ onBeforeUnmount(() => {
       @page-change="(page) => (library.filters.page = page)"
     />
 
-    <VustDialog
+    <ApplicationDialog
       :visible="readonlyDialogVisible"
       data-ui="script-detail-dialog"
       :title="readonlyDetail?.name ?? t('app.scriptManager.dialog.viewTitle')"
       width="min(980px, 92vw)"
       :close-on-click-overlay="false"
+      return-focus-selector="[data-ui='table']"
       @close="readonlyDialogVisible = false"
     >
       <div v-if="readonlyDetail" class="detail-dialog" data-slot="body">
@@ -570,14 +595,17 @@ onBeforeUnmount(() => {
       <template #footer>
         <VustButton @click="readonlyDialogVisible = false">{{ t('common.close') }}</VustButton>
       </template>
-    </VustDialog>
+    </ApplicationDialog>
 
-    <VustDialog
+    <ApplicationDialog
       :visible="formDialogVisible"
       data-ui="script-form-dialog"
       :title="formTitle"
       width="min(980px, 92vw)"
       :close-on-click-overlay="false"
+      :close-disabled="savePending"
+      initial-focus-selector="#script-library-name"
+      :return-focus-selector="formReturnFocusSelector"
       @close="closeForm"
     >
       <div class="form-dialog" data-slot="body">
@@ -658,19 +686,22 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <template #footer>
-        <VustButton @click="closeForm">{{ t('common.cancel') }}</VustButton>
+        <VustButton :disabled="savePending" @click="closeForm">{{ t('common.cancel') }}</VustButton>
         <VustButton type="primary" :loading="library.isActionPending('save')" @click="save">
           {{ t('common.save') }}
         </VustButton>
       </template>
-    </VustDialog>
+    </ApplicationDialog>
 
-    <VustDialog
+    <ApplicationDialog
       :visible="runDialogVisible"
       data-ui="run-dialog"
       :title="t('app.scriptManager.runDialog.title', { name: runScript?.name ?? '' })"
       width="min(760px, 92vw)"
       :close-on-click-overlay="false"
+      :close-disabled="runDialogBusy"
+      initial-focus-selector="#script-run-node"
+      return-focus-selector="[data-ui='table']"
       @close="closeRun"
     >
       <div class="run-dialog" data-slot="body">
@@ -738,10 +769,7 @@ onBeforeUnmount(() => {
       </div>
       <template #footer>
         <template v-if="!library.currentRun.value">
-          <VustButton
-            :disabled="runScript ? library.isActionPending(`run:${runScript.scriptId}`) : false"
-            @click="closeRun"
-          >
+          <VustButton :disabled="runDialogBusy" @click="closeRun">
             {{ t('common.cancel') }}
           </VustButton>
           <VustButton
@@ -756,6 +784,7 @@ onBeforeUnmount(() => {
         <VustButton
           v-else
           :type="library.isRunActive.value ? 'danger' : undefined"
+          :disabled="runDialogBusy"
           :loading="
             library.currentRun.value
               ? library.isActionPending(`dismiss:${library.currentRun.value.runId}`)
@@ -770,7 +799,20 @@ onBeforeUnmount(() => {
           }}
         </VustButton>
       </template>
-    </VustDialog>
+    </ApplicationDialog>
+
+    <ApplicationConfirmationDialog
+      :visible="confirmationState.visible"
+      :title="confirmationState.title"
+      :message="confirmationState.message"
+      :confirm-text="confirmationState.confirmText"
+      :cancel-text="confirmationState.cancelText"
+      :type="confirmationState.type"
+      :return-focus-selector="confirmationReturnFocusSelector"
+      dialog-ui="script-confirmation-dialog"
+      @confirm="handleConfirmationResponse(true)"
+      @cancel="handleConfirmationResponse(false)"
+    />
   </div>
 </template>
 

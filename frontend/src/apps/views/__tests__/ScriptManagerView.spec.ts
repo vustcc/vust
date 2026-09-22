@@ -6,18 +6,10 @@ import type { ScriptDetail, ScriptRun, ScriptSummary } from '@/api/generated/scr
 import { nodesApi } from '@/api/modules/nodes'
 import { scriptsApi } from '@/api/modules/scripts'
 import ScriptManagerView from '@/apps/views/ScriptManagerView.vue'
-import {
-  VustActionMenu,
-  VustButton,
-  VustCheckbox,
-  VustDialog,
-  VustTable,
-  VustTooltip,
-} from '@/components/ui'
+import ApplicationDialog from '@/components/layout/ApplicationDialog.vue'
+import { VustActionMenu, VustButton, VustCheckbox, VustTable, VustTooltip } from '@/components/ui'
 import en from '@/locales/en'
 import zh from '@/locales/zh'
-
-const showConfirmation = vi.fn()
 
 vi.mock('@/components/editor/MonacoEditor.vue', () => ({
   default: {
@@ -47,9 +39,6 @@ vi.mock('@/api/modules/nodes', () => ({ nodesApi: { list: vi.fn() } }))
 vi.mock('@/stores/window-manager', () => ({
   useWindowManagerStore: () => ({ updateWindowRuntimeState: vi.fn() }),
 }))
-vi.mock('@/stores/confirmation-modal', () => ({
-  useConfirmationModalStore: () => ({ showConfirmation }),
-}))
 vi.mock('@/api/modules/scripts', () => ({
   scriptsApi: {
     list: vi.fn(),
@@ -63,6 +52,13 @@ vi.mock('@/api/modules/scripts', () => ({
 }))
 
 const response = <T>(data: T) => ({ success: true, code: 200, message: '', data })
+const deferred = <T>() => {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((complete) => {
+    resolve = complete
+  })
+  return { promise, resolve }
+}
 const script = (interactive = false): ScriptSummary => ({
   scriptId: interactive ? 'script-interactive' : 'script-standard',
   name: interactive ? 'Interactive' : 'Standard',
@@ -99,18 +95,44 @@ const queuedRun = (): ScriptRun => ({
   capabilities: { canCancel: true },
 })
 
-const mountView = () =>
-  mount(ScriptManagerView, {
+const mountView = () => {
+  const windowElement = document.createElement('section')
+  windowElement.className = 'application-window'
+  windowElement.innerHTML = `
+    <header class="window-header">Script Library</header>
+    <main class="window-content"></main>
+  `
+  document.body.append(windowElement)
+
+  return mount(ScriptManagerView, {
+    attachTo: windowElement.querySelector<HTMLElement>('.window-content')!,
     global: {
       plugins: [createPinia(), createI18n({ legacy: false, locale: 'zh', messages: { zh, en } })],
     },
   })
+}
+
+const clickDialogButton = async (dialogUi: string, label: string) => {
+  const button = Array.from(
+    document.querySelectorAll<HTMLButtonElement>(`[data-ui="${dialogUi}"] button`),
+  ).find((item) => item.textContent?.trim() === label)
+  expect(button).toBeDefined()
+  button!.click()
+  await flushPromises()
+}
+
+const setDocumentInputValue = async (selector: string, value: string) => {
+  const input = document.querySelector<HTMLInputElement>(selector)
+  expect(input).not.toBeNull()
+  input!.value = value
+  input!.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushPromises()
+}
 
 describe('ScriptManagerView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
-    showConfirmation.mockResolvedValue(true)
     vi.mocked(nodesApi.list).mockResolvedValue(
       response([{ nodeId: 'local', name: 'Local', status: 'online' } as never]),
     )
@@ -164,9 +186,14 @@ describe('ScriptManagerView', () => {
     await wrapper.findAll('.name-button')[0]!.trigger('click')
     await flushPromises()
     const detailDialog = wrapper
-      .findAllComponents(VustDialog)
+      .findAllComponents(ApplicationDialog)
       .find((item) => item.props('title') === 'Standard')
     expect(detailDialog?.props('visible')).toBe(true)
+    const detailElement = document.querySelector('[data-ui="script-detail-dialog"]')!
+    const detailOverlay = detailElement.closest('[data-ui="application-dialog-overlay"]')!
+    expect(detailOverlay.closest('.window-content')).toBe(document.querySelector('.window-content'))
+    expect(document.querySelector('.window-header')?.contains(detailOverlay)).toBe(false)
+    expect(Array.from(document.body.children)).not.toContain(detailOverlay)
     const editor = wrapper
       .findAllComponents({ name: 'MonacoEditor' })
       .find((item) => item.props('id') === 'script-library-readonly-source')
@@ -222,6 +249,9 @@ describe('ScriptManagerView', () => {
         .some((item) => item.props('id') === 'script-library-interactive'),
     ).toBe(true)
     const formElement = document.querySelector('[data-ui="script-form-dialog"] [data-ui="form"]')!
+    const formOverlay = formElement.closest('[data-ui="application-dialog-overlay"]')!
+    expect(formOverlay.closest('.window-content')).toBe(document.querySelector('.window-content'))
+    expect(document.activeElement?.getAttribute('name')).toBe('scriptName')
     expect(
       Array.from(formElement.querySelectorAll(':scope > [data-slot]')).map((item) =>
         item.getAttribute('data-slot'),
@@ -245,11 +275,111 @@ describe('ScriptManagerView', () => {
     wrapper.unmount()
   })
 
+  it('新建、克隆和编辑复用窗口级表单并恢复正确数据', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.get('[data-ui="script-create"]').trigger('click')
+    let formDialog = wrapper
+      .findAllComponents(ApplicationDialog)
+      .find((item) => item.props('title') === '新建脚本')!
+    expect(formDialog.props('visible')).toBe(true)
+    expect(document.querySelector<HTMLInputElement>('#script-library-name')?.value).toBe('')
+    formDialog.vm.$emit('close')
+    await flushPromises()
+
+    await wrapper.findAllComponents(VustActionMenu)[0]!.props('actions')[1].handler()
+    await flushPromises()
+    formDialog = wrapper
+      .findAllComponents(ApplicationDialog)
+      .find((item) => item.props('title') === '克隆脚本')!
+    expect(formDialog.props('visible')).toBe(true)
+    expect(document.querySelector<HTMLInputElement>('#script-library-name')?.value).toBe(
+      'Standard 副本',
+    )
+    formDialog.vm.$emit('close')
+    await flushPromises()
+
+    await wrapper.findAllComponents(VustActionMenu)[0]!.props('actions')[2].handler()
+    await flushPromises()
+    formDialog = wrapper
+      .findAllComponents(ApplicationDialog)
+      .find((item) => item.props('title') === '编辑脚本')!
+    expect(formDialog.props('visible')).toBe(true)
+    expect(document.querySelector<HTMLInputElement>('#script-library-name')?.value).toBe('Standard')
+    wrapper.unmount()
+  })
+
+  it('脏表单取消放弃时保留内容，确认放弃后返回新建入口', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-ui="script-create"]').trigger('click')
+    await setDocumentInputValue('#script-library-name', 'Draft')
+
+    const formDialog = wrapper
+      .findAllComponents(ApplicationDialog)
+      .find((item) => item.props('title') === '新建脚本')!
+    formDialog.vm.$emit('close')
+    await flushPromises()
+    expect(document.querySelector('[data-ui="script-confirmation-dialog"]')).not.toBeNull()
+
+    await clickDialogButton('script-confirmation-dialog', '取消')
+    expect(formDialog.props('visible')).toBe(true)
+    expect(document.querySelector<HTMLInputElement>('#script-library-name')?.value).toBe('Draft')
+    expect(document.activeElement?.getAttribute('data-ui')).toBe('script-form-dialog')
+
+    formDialog.vm.$emit('close')
+    await flushPromises()
+    await clickDialogButton('script-confirmation-dialog', '放弃修改')
+    expect(formDialog.props('visible')).toBe(false)
+    expect(document.activeElement?.getAttribute('data-ui')).toBe('script-create')
+    wrapper.unmount()
+  })
+
+  it('保存失败保留表单，保存期间禁止关闭，成功后恢复列表', async () => {
+    vi.mocked(scriptsApi.create).mockRejectedValueOnce(new Error('save failed'))
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-ui="script-create"]').trigger('click')
+    await setDocumentInputValue('#script-library-name', 'Deploy')
+
+    const formDialog = wrapper
+      .findAllComponents(ApplicationDialog)
+      .find((item) => item.props('title') === '新建脚本')!
+    const saveButton = formDialog
+      .findAllComponents(VustButton)
+      .find((item) => item.text() === '保存')!
+    await saveButton.trigger('click')
+    await flushPromises()
+    expect(formDialog.props('visible')).toBe(true)
+    expect(document.querySelector<HTMLInputElement>('#script-library-name')?.value).toBe('Deploy')
+
+    const saveRequest = deferred<ReturnType<typeof response<ScriptDetail>>>()
+    vi.mocked(scriptsApi.create).mockReturnValueOnce(saveRequest.promise)
+    await saveButton.trigger('click')
+    expect(formDialog.props('closeDisabled')).toBe(true)
+    expect(
+      document.querySelector<HTMLButtonElement>(
+        '[data-ui="script-form-dialog"] .application-dialog__close',
+      )?.disabled,
+    ).toBe(true)
+
+    saveRequest.resolve(response(detail(script())))
+    await flushPromises()
+    expect(formDialog.props('visible')).toBe(false)
+    expect(scriptsApi.list).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
   it('删除脚本只调用一次删除接口', async () => {
     const wrapper = mountView()
     await flushPromises()
     await wrapper.findAllComponents(VustActionMenu)[0]!.props('actions')[3].handler()
     await flushPromises()
+    const confirmation = document.querySelector('[data-ui="script-confirmation-dialog"]')!
+    expect(confirmation.textContent).toContain('Standard')
+    expect(confirmation.closest('.window-content')).toBe(document.querySelector('.window-content'))
+    await clickDialogButton('script-confirmation-dialog', '确认删除')
     expect(scriptsApi.remove).toHaveBeenCalledTimes(1)
     expect(scriptsApi.remove).toHaveBeenCalledWith('script-standard')
     wrapper.unmount()
@@ -261,8 +391,11 @@ describe('ScriptManagerView', () => {
     await wrapper.findAllComponents(VustActionMenu)[0]!.props('actions')[0].handler()
     await flushPromises()
     const runDialog = wrapper
-      .findAllComponents(VustDialog)
+      .findAllComponents(ApplicationDialog)
       .find((item) => item.props('title') === '执行脚本 Standard')!
+    expect(document.querySelector('[data-ui="run-dialog"]')?.closest('.window-content')).toBe(
+      document.querySelector('.window-content'),
+    )
     expect(document.querySelector('[data-ui="run-dialog"]')?.textContent).not.toContain(
       '脚本将以当前已保存版本',
     )
@@ -275,13 +408,39 @@ describe('ScriptManagerView', () => {
     wrapper.unmount()
   })
 
+  it('提交执行期间禁止关闭执行 Dialog', async () => {
+    const runRequest = deferred<ReturnType<typeof response<ScriptRun>>>()
+    vi.mocked(scriptsApi.startRun).mockReturnValueOnce(runRequest.promise)
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAllComponents(VustActionMenu)[0]!.props('actions')[0].handler()
+    await flushPromises()
+
+    const runDialog = wrapper
+      .findAllComponents(ApplicationDialog)
+      .find((item) => item.props('title') === '执行脚本 Standard')!
+    await runDialog
+      .findAllComponents(VustButton)
+      .find((item) => item.text() === '执行')!
+      .trigger('click')
+    expect(runDialog.props('closeDisabled')).toBe(true)
+    runDialog.vm.$emit('close')
+    await flushPromises()
+    expect(runDialog.props('visible')).toBe(true)
+
+    runRequest.resolve(response(queuedRun()))
+    await flushPromises()
+    expect(runDialog.props('closeDisabled')).toBe(false)
+    wrapper.unmount()
+  })
+
   it('交互式标记不改变手动执行终端', async () => {
     const wrapper = mountView()
     await flushPromises()
     await wrapper.findAllComponents(VustActionMenu)[1]!.props('actions')[0].handler()
     await flushPromises()
     const runDialog = wrapper
-      .findAllComponents(VustDialog)
+      .findAllComponents(ApplicationDialog)
       .find((item) => item.props('title') === '执行脚本 Interactive')!
     await runDialog
       .findAllComponents(VustButton)
@@ -299,7 +458,7 @@ describe('ScriptManagerView', () => {
     await menu.props('actions')[0].handler()
     await flushPromises()
     const runDialog = wrapper
-      .findAllComponents(VustDialog)
+      .findAllComponents(ApplicationDialog)
       .find((item) => item.props('title') === '执行脚本 Standard')!
     expect(runDialog.props('visible')).toBe(true)
     const runButton = runDialog.findAllComponents(VustButton).find((item) => item.text() === '执行')
@@ -307,8 +466,16 @@ describe('ScriptManagerView', () => {
     await flushPromises()
     runDialog.vm.$emit('close')
     await flushPromises()
-    expect(showConfirmation).toHaveBeenCalled()
+    expect(document.querySelector('[data-ui="script-confirmation-dialog"]')).not.toBeNull()
+    const dismissRequest = deferred<ReturnType<typeof response<undefined>>>()
+    vi.mocked(scriptsApi.dismissRun).mockReturnValueOnce(dismissRequest.promise)
+    await clickDialogButton('script-confirmation-dialog', '取消并关闭')
     expect(scriptsApi.dismissRun).toHaveBeenCalledWith('run-1')
+    expect(runDialog.props('closeDisabled')).toBe(true)
+    expect(runDialog.props('visible')).toBe(true)
+
+    dismissRequest.resolve(response(undefined))
+    await flushPromises()
     expect(runDialog.props('visible')).toBe(false)
     wrapper.unmount()
   })
