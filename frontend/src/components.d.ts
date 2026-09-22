@@ -13,6 +13,8 @@ declare module 'vue' {
   export interface GlobalComponents {
     AppContextMenu: typeof import('./components/AppContextMenu.vue')['default']
     AppIcon: typeof import('./components/icons/AppIcon.vue')['default']
+    ApplicationConfirmationDialog: typeof import('./components/layout/ApplicationConfirmationDialog.vue')['default']
+    ApplicationDialog: typeof import('./components/layout/ApplicationDialog.vue')['default']
     ApplicationWindow: typeof import('./components/layout/ApplicationWindow.vue')['default']
     DesktopHeader: typeof import('./components/layout/DesktopHeader.vue')['default']
     DesktopLayout: typeof import('./components/layout/DesktopLayout.vue')['default']
