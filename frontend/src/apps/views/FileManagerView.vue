@@ -5,7 +5,6 @@ import type { FsEntry } from '@/api/interface/fs'
 import { useToastStore } from '@/stores/toast'
 import { useNodeStore } from '@/stores/node'
 import { useWindowManagerStore } from '@/stores/window-manager'
-import { useConfirmationModalStore } from '@/stores/confirmation-modal'
 import { useI18n } from 'vue-i18n'
 import VustTable, { type VustTableColumn } from '@/components/ui/VustTable.vue'
 import {
@@ -20,14 +19,16 @@ import {
   VustSwitch,
   VustEmpty,
   VustLoading,
-  VustDialog,
   VustCheckbox,
 } from '@/components/ui'
 import VustIcon from '@/components/icons/VustIcon.vue'
 import AppContextMenu from '@/components/AppContextMenu.vue'
+import ApplicationDialog from '@/components/layout/ApplicationDialog.vue'
+import ApplicationConfirmationDialog from '@/components/layout/ApplicationConfirmationDialog.vue'
 import { formatBytes } from '@/utils/units'
 import { formatDateTime } from '@/utils/time'
 import { useFileOperations } from '@/composables/useFileOperations'
+import { useApplicationConfirmation } from '@/composables/useApplicationConfirmation'
 
 const props = defineProps<{
   isMaximized?: boolean
@@ -39,7 +40,8 @@ const { t } = useI18n()
 const toastStore = useToastStore()
 const nodeStore = useNodeStore()
 const windowStore = useWindowManagerStore()
-const confirmationStore = useConfirmationModalStore()
+const { confirmationState, showConfirmation, handleConfirmationResponse } =
+  useApplicationConfirmation()
 const targetNodeId = ref(
   typeof props.payload?.nodeId === 'string' ? props.payload.nodeId : nodeStore.currentNodeId,
 )
@@ -353,7 +355,7 @@ const isAllSelected = computed(() => {
 const handleBatchDelete = async () => {
   if (selectedPaths.value.size === 0) return
   const pathSnapshot = Array.from(selectedPaths.value)
-  const confirmed = await confirmationStore.showConfirmation(
+  const confirmed = await showConfirmation(
     t('app.fileManager.batchDeleteWarning', { count: pathSnapshot.length }),
     t('app.fileManager.batchDeleteTitle'),
     t('app.fileManager.confirmDelete'),
@@ -382,6 +384,7 @@ const dialogState = ref({
   inputName: '',
   targetEntry: null as FsEntry | null,
 })
+const dialogReturnFocusSelector = ref('')
 const dialogTitle = computed(() => {
   if (dialogState.value.type === 'dir') return t('app.fileManager.newDir')
   if (dialogState.value.type === 'file') return t('app.fileManager.newFile')
@@ -393,12 +396,27 @@ const dialogTitle = computed(() => {
 const openDialog = (
   type: 'dir' | 'file' | 'rename' | 'batchMove' | 'batchCopy',
   entry: FsEntry | null = null,
+  returnFocusSelector = '[data-ui="file-table"]',
 ) => {
   dialogState.value.type = type
   dialogState.value.targetEntry = entry
   dialogState.value.inputName = entry ? entry.name : ''
+  dialogReturnFocusSelector.value = returnFocusSelector
   dialogState.value.visible = true
 }
+
+const createActions = computed(() => [
+  {
+    label: t('app.fileManager.newFile'),
+    icon: 'file',
+    handler: () => openDialog('file', null, '[data-ui="file-create-actions"] button'),
+  },
+  {
+    label: t('app.fileManager.newDir'),
+    icon: 'folder',
+    handler: () => openDialog('dir', null, '[data-ui="file-create-actions"] button'),
+  },
+])
 
 const confirmDialog = async () => {
   const { type, inputName, targetEntry } = dialogState.value
@@ -515,7 +533,7 @@ const handleDownload = async (entry: FsEntry) => {
 }
 const handleDelete = async (entry: FsEntry) => {
   if (!entry.capabilities.canRemove) return
-  const confirmed = await confirmationStore.showConfirmation(
+  const confirmed = await showConfirmation(
     entry.kind === 'directory'
       ? t('app.fileManager.deleteDirectoryWarning', { path: entry.path })
       : t('app.fileManager.deleteItemWarning', {
@@ -587,12 +605,12 @@ onUnmounted(() => document.removeEventListener('click', hideContextMenu))
         <VustSwitch v-model="showHidden" :active-text="t('app.fileManager.showHidden')" />
       </div>
       <div class="nav-actions">
-        <VustButton type="secondary" @click="openDialog('file')">{{
-          t('app.fileManager.newFile')
-        }}</VustButton>
-        <VustButton type="secondary" @click="openDialog('dir')">{{
-          t('app.fileManager.newDir')
-        }}</VustButton>
+        <VustActionMenu
+          :label="t('common.new')"
+          :actions="createActions"
+          :disabled="fileOperationCount > 0"
+          data-ui="file-create-actions"
+        />
         <VustActionMenu
           :label="t('app.fileManager.upload')"
           :actions="uploadActions"
@@ -661,6 +679,7 @@ onUnmounted(() => document.removeEventListener('click', hideContextMenu))
           ref="fileTableRef"
           class="file-table"
           data-ui="file-table"
+          tabindex="-1"
           :data="pagedEntries"
           :columns="columns"
           border
@@ -829,10 +848,13 @@ onUnmounted(() => document.removeEventListener('click', hideContextMenu))
       </button>
     </AppContextMenu>
 
-    <!-- Dialog -->
-    <VustDialog
+    <ApplicationDialog
       :visible="dialogState.visible"
       :title="dialogTitle"
+      :close-disabled="fileOperationCount > 0"
+      initial-focus-selector="#file-manager-dialog-input"
+      :return-focus-selector="dialogReturnFocusSelector"
+      data-ui="file-operation-dialog"
       @close="dialogState.visible = false"
     >
       <div style="padding-top: 10px">
@@ -849,20 +871,26 @@ onUnmounted(() => document.removeEventListener('click', hideContextMenu))
         />
       </div>
       <template #footer>
-        <VustButton @click="dialogState.visible = false">{{
+        <VustButton :disabled="fileOperationCount > 0" @click="dialogState.visible = false">{{
           t('app.fileManager.cancel')
         }}</VustButton>
-        <VustButton type="primary" @click="confirmDialog">{{
-          t('app.fileManager.confirm')
-        }}</VustButton>
+        <VustButton
+          type="primary"
+          :loading="fileOperationCount > 0"
+          :disabled="fileOperationCount > 0 || !dialogState.inputName.trim()"
+          @click="confirmDialog"
+          >{{ t('app.fileManager.confirm') }}</VustButton
+        >
       </template>
-    </VustDialog>
+    </ApplicationDialog>
 
-    <VustDialog
+    <ApplicationDialog
       :visible="uploadTask.visible"
       :title="t('app.fileManager.upload')"
       width="36rem"
       :close-on-click-overlay="!uploadActive"
+      :close-disabled="uploadActive"
+      return-focus-selector="[data-ui='file-upload-actions'] button"
       data-ui="file-upload-dialog"
       :data-status="uploadTask.status"
       @close="handleUploadDialogClose"
@@ -968,7 +996,20 @@ onUnmounted(() => document.removeEventListener('click', hideContextMenu))
           {{ t('app.fileManager.uploadTask.dismiss') }}
         </VustButton>
       </template>
-    </VustDialog>
+    </ApplicationDialog>
+
+    <ApplicationConfirmationDialog
+      :visible="confirmationState.visible"
+      :title="confirmationState.title"
+      :message="confirmationState.message"
+      :confirm-text="confirmationState.confirmText"
+      :cancel-text="confirmationState.cancelText"
+      :type="confirmationState.type"
+      return-focus-selector="[data-ui='file-table']"
+      dialog-ui="file-confirmation-dialog"
+      @confirm="handleConfirmationResponse(true)"
+      @cancel="handleConfirmationResponse(false)"
+    />
 
     <VustLoading :loading="listLoading && !listLoaded" :text="t('app.fileManager.loading')" cover />
   </section>

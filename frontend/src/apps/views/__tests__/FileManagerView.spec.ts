@@ -12,6 +12,9 @@ const api = vi.hoisted(() => ({
   openWindowWithPayload: vi.fn(),
 }))
 const operations = vi.hoisted(() => ({
+  createFile: vi.fn(),
+  mkdir: vi.fn(),
+  renamePath: vi.fn(),
   removePath: vi.fn(),
   runPathTask: vi.fn(),
   startUpload: vi.fn(),
@@ -36,10 +39,6 @@ const operations = vi.hoisted(() => ({
   },
 }))
 const windowRuntime = vi.hoisted(() => ({ updateWindowRuntimeState: vi.fn() }))
-const confirmation = vi.hoisted(() => ({
-  showConfirmation: vi.fn(),
-}))
-
 vi.mock('@/api/modules/fs', () => ({ fsApi: { forNode: api.forNode } }))
 vi.mock('@/stores/node', () => ({
   useNodeStore: () => ({ currentNodeId: 'global-node' }),
@@ -53,15 +52,12 @@ vi.mock('@/stores/window-manager', () => ({
 vi.mock('@/stores/toast', () => ({
   useToastStore: () => ({ error: vi.fn(), success: vi.fn() }),
 }))
-vi.mock('@/stores/confirmation-modal', () => ({
-  useConfirmationModalStore: () => confirmation,
-}))
 vi.mock('@/composables/useFileOperations', () => ({
   useFileOperations: () => ({
-    createFile: vi.fn(),
-    mkdir: vi.fn(),
+    createFile: operations.createFile,
+    mkdir: operations.mkdir,
     removePath: operations.removePath,
-    renamePath: vi.fn(),
+    renamePath: operations.renamePath,
     runPathTask: operations.runPathTask,
     downloadFile: vi.fn(),
     uploadTask: operations.uploadTask,
@@ -125,7 +121,9 @@ describe('FileManagerView', () => {
     api.forNode.mockReturnValue({ home: api.home, listEntries: api.listEntries })
     api.home.mockResolvedValue(response({ path: '/home' }))
     api.listEntries.mockResolvedValue(response(page('/home', [])))
-    confirmation.showConfirmation.mockResolvedValue(false)
+    operations.createFile.mockResolvedValue(true)
+    operations.mkdir.mockResolvedValue(true)
+    operations.renamePath.mockResolvedValue(true)
     operations.removePath.mockResolvedValue(true)
     operations.runPathTask.mockResolvedValue(true)
     operations.startUpload.mockResolvedValue(false)
@@ -242,23 +240,24 @@ describe('FileManagerView', () => {
     })
     await flushPromises()
 
-    await (
+    const deletion = (
       wrapper.vm as unknown as { handleDelete: (item: FsEntry) => Promise<void> }
     ).handleDelete(directory)
+    await flushPromises()
 
-    expect(confirmation.showConfirmation).toHaveBeenCalledWith(
-      expect.stringContaining('/home/archive'),
-      '确认删除',
-      '确认删除',
-      '取消',
-      'danger',
-    )
+    const confirmationDialog = wrapper.get('[data-ui="file-confirmation-dialog"]')
+    expect(confirmationDialog.text()).toContain('/home/archive')
+    const cancelButton = confirmationDialog
+      .findAll('button')
+      .find((button) => button.text() === '取消')
+    expect(cancelButton).toBeDefined()
+    await cancelButton!.trigger('click')
+    await deletion
     expect(operations.removePath).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 
   it('确认单项删除时保留路径、递归参数和 revision', async () => {
-    confirmation.showConfirmation.mockResolvedValue(true)
     const file = entry('report.txt', '/home/report.txt')
     api.listEntries.mockResolvedValue(response(page('/home', [file])))
     const wrapper = mount(FileManagerView, {
@@ -269,9 +268,17 @@ describe('FileManagerView', () => {
     })
     await flushPromises()
 
-    await (
+    const deletion = (
       wrapper.vm as unknown as { handleDelete: (item: FsEntry) => Promise<void> }
     ).handleDelete(file)
+    await flushPromises()
+    const confirmButton = wrapper
+      .get('[data-ui="file-confirmation-dialog"]')
+      .findAll('button')
+      .find((button) => button.text() === '确认删除')
+    expect(confirmButton).toBeDefined()
+    await confirmButton!.trigger('click')
+    await deletion
     await flushPromises()
 
     expect(operations.removePath).toHaveBeenCalledWith(
@@ -283,8 +290,6 @@ describe('FileManagerView', () => {
   })
 
   it('批量删除只使用确认弹窗打开时的路径快照', async () => {
-    const confirmationResult = deferred<boolean>()
-    confirmation.showConfirmation.mockReturnValue(confirmationResult.promise)
     const wrapper = mount(FileManagerView, {
       props: { payload: { nodeId: 'node-a' } },
       global: {
@@ -300,23 +305,90 @@ describe('FileManagerView', () => {
     view.toggleSelection('/home/b', true)
 
     const deletion = view.handleBatchDelete()
+    await flushPromises()
     view.toggleSelection('/home/c', true)
-    confirmationResult.resolve(true)
+    const confirmButton = wrapper
+      .get('[data-ui="file-confirmation-dialog"]')
+      .findAll('button')
+      .find((button) => button.text() === '确认删除')
+    expect(confirmButton).toBeDefined()
+    await confirmButton!.trigger('click')
     await deletion
     await flushPromises()
 
-    expect(confirmation.showConfirmation).toHaveBeenCalledWith(
-      expect.stringContaining('2'),
-      '确认批量删除',
-      '确认删除',
-      '取消',
-      'danger',
-    )
     expect(operations.runPathTask).toHaveBeenCalledWith(
       'remove',
       [{ path: '/home/a' }, { path: '/home/b' }],
       true,
     )
+    wrapper.unmount()
+  })
+
+  it('通过“新建”菜单打开文件和文件夹表单', async () => {
+    const wrapper = mount(FileManagerView, {
+      attachTo: document.body,
+      props: { payload: { nodeId: 'node-a' } },
+      global: {
+        plugins: [createI18n({ legacy: false, locale: 'zh', messages: { zh } })],
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-ui="file-operation-dialog"]').exists()).toBe(false)
+    const createButton = wrapper.findAll('button').find((button) => button.text().trim() === '新建')
+    expect(createButton).toBeDefined()
+    await createButton!.trigger('click')
+    await flushPromises()
+
+    const menuItems = Array.from(
+      document.body.querySelectorAll<HTMLButtonElement>('button'),
+    ).filter((button) => ['新建文件', '新建文件夹'].includes(button.textContent?.trim() || ''))
+    expect(menuItems.map((button) => button.textContent?.trim())).toEqual([
+      '新建文件',
+      '新建文件夹',
+    ])
+
+    menuItems[0]!.click()
+    await flushPromises()
+    expect(wrapper.get('[data-ui="file-operation-dialog"]').text()).toContain('新建文件')
+    expect(document.activeElement?.getAttribute('name')).toBe('fileManagerDialogInput')
+    wrapper.unmount()
+  })
+
+  it('创建失败时保留表单，成功后关闭并刷新列表', async () => {
+    operations.createFile.mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+    const wrapper = mount(FileManagerView, {
+      props: { payload: { nodeId: 'node-a' } },
+      global: {
+        plugins: [createI18n({ legacy: false, locale: 'zh', messages: { zh } })],
+      },
+    })
+    await flushPromises()
+
+    const view = wrapper.vm as unknown as {
+      openDialog: (type: 'file') => void
+    }
+    view.openDialog('file')
+    await flushPromises()
+    const input = wrapper.get('input[name="fileManagerDialogInput"]')
+    await input.setValue('draft.txt')
+
+    const confirm = () =>
+      wrapper
+        .get('[data-ui="file-operation-dialog"]')
+        .findAll('button')
+        .find((button) => button.text() === '确定')!
+
+    await confirm().trigger('click')
+    await flushPromises()
+    expect(operations.createFile).toHaveBeenLastCalledWith('/home/draft.txt', '')
+    expect(wrapper.find('[data-ui="file-operation-dialog"]').exists()).toBe(true)
+    expect(input.element.value).toBe('draft.txt')
+
+    await confirm().trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-ui="file-operation-dialog"]').exists()).toBe(false)
+    expect(api.listEntries).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
 
@@ -354,7 +426,7 @@ describe('FileManagerView', () => {
     wrapper.unmount()
   })
 
-  it('在模态框展示可访问上传进度并用上传原因阻止关闭窗口', async () => {
+  it('在窗口级对话框展示可访问上传进度并用上传原因阻止关闭窗口', async () => {
     operations.uploadActive.value = true
     Object.assign(operations.uploadTask, {
       visible: true,
@@ -380,17 +452,16 @@ describe('FileManagerView', () => {
     })
     await flushPromises()
 
-    expect(wrapper.element.querySelector('[data-slot="upload-progress"]')).toBeNull()
-    const dialog = document.body.querySelector<HTMLElement>('[data-ui="file-upload-dialog"]')
+    const dialog = wrapper.element.querySelector<HTMLElement>('[data-ui="file-upload-dialog"]')
     expect(dialog).not.toBeNull()
     const progress = dialog!.querySelector<HTMLElement>('[role="progressbar"]')
     expect(progress?.getAttribute('aria-valuenow')).toBe('50')
     expect(dialog!.textContent).toContain('已处理 2 / 4 个文件')
 
-    dialog!.querySelector<HTMLButtonElement>('.vl-dialog-close-btn')?.click()
+    dialog!.querySelector<HTMLButtonElement>('.application-dialog__close')?.click()
     await flushPromises()
     expect(operations.dismissUpload).not.toHaveBeenCalled()
-    expect(document.body.querySelector('[data-ui="file-upload-dialog"]')).not.toBeNull()
+    expect(wrapper.find('[data-ui="file-upload-dialog"]').exists()).toBe(true)
 
     dialog!.querySelector<HTMLButtonElement>('[data-ui="file-upload-cancel"]')?.click()
     await flushPromises()
@@ -426,11 +497,8 @@ describe('FileManagerView', () => {
     })
     await flushPromises()
 
-    const dismiss = document.body.querySelector<HTMLButtonElement>(
-      '[data-ui="file-upload-dismiss"]',
-    )
-    expect(dismiss).not.toBeNull()
-    dismiss!.click()
+    const dismiss = wrapper.get<HTMLButtonElement>('[data-ui="file-upload-dismiss"]')
+    await dismiss.trigger('click')
     await flushPromises()
 
     expect(operations.dismissUpload).toHaveBeenCalledTimes(1)

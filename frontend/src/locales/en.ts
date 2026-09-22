@@ -64,6 +64,7 @@ const en = {
   common: {
     search: 'Search',
     create: 'Create',
+    new: 'New',
     back: 'Back',
     actions: 'Actions',
     start: 'Start',

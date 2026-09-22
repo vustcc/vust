@@ -65,6 +65,7 @@ const zh: typeof en = {
   common: {
     search: '搜索',
     create: '创建',
+    new: '新建',
     back: '返回',
     actions: '操作',
     start: '启动',
