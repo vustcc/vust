@@ -2649,6 +2649,8 @@ const en = {
       switchBlockedRest: '; {count} more windows need attention',
       switchFailed: 'Node switch failed',
       switchSuccess: 'Current node switched to {name}',
+      guardBusy: 'A node operation is in progress. Wait for it to finish.',
+      guardOpen: 'Node Manager is open.',
       noTags: 'No tags',
       status: {
         draft: 'Draft',
@@ -2744,9 +2746,10 @@ const en = {
         statusSuccess: 'Completed',
         statusFailed: 'Failed',
         deploying: 'Deploying, please wait...',
-        inProgress: 'Node deploying',
-        close: 'Close',
         noLogs: 'No logs',
+        runInBackground: 'Run in Background',
+        viewProgress: 'View Deploy Progress',
+        viewResult: 'View Deploy Result',
       },
       check: {
         action: 'Check',
@@ -2781,15 +2784,12 @@ const en = {
       },
       precheck: {
         title: 'Availability Check',
-        drawerTitle: 'Availability Check',
         statusPassed: 'Passed',
         statusFailed: 'Failed',
         failed: 'Availability check failed',
         conflictTitle: 'Check failed. Please resolve issues first',
+        backToEdit: 'Back to Edit',
         confirmDeploy: 'Start Deploy',
-        acknowledge: 'Got it',
-        cancel: 'Cancel',
-        cancelSaved: 'Cancel',
         status: {
           passedShort: 'Passed',
           warningShort: 'Warning',
@@ -2812,7 +2812,6 @@ const en = {
       create: {
         action: 'Add Node',
         title: 'New Node',
-        back: 'Back to List',
         name: 'Node Name',
         addr: 'Address',
         addrRequired: 'Node address cannot be empty',
@@ -2845,7 +2844,6 @@ const en = {
         vustUrlInvalid: 'Controller callback URL is invalid',
         vustUrlHttpsRequired: 'Controller callback URL must use HTTPS',
         vustUrlBaseRequired: 'Controller callback URL must not include path, query, or fragment',
-        cancel: 'Cancel',
         submit: 'Run Precheck',
       },
       form: {

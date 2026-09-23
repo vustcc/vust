@@ -2594,6 +2594,8 @@ const zh: typeof en = {
       switchBlockedRest: '；另有 {count} 个窗口需要处理',
       switchFailed: '节点切换失败',
       switchSuccess: '当前节点已切换为 {name}',
+      guardBusy: '节点操作正在进行，请等待操作完成。',
+      guardOpen: '节点管理已打开。',
       noTags: '无标签',
       status: {
         draft: '草稿',
@@ -2689,9 +2691,10 @@ const zh: typeof en = {
         statusSuccess: '部署完成',
         statusFailed: '部署失败',
         deploying: '部署中，请稍候...',
-        inProgress: '节点部署中',
-        close: '关闭',
         noLogs: '暂无部署日志',
+        runInBackground: '后台运行',
+        viewProgress: '查看部署进度',
+        viewResult: '查看部署结果',
       },
       check: {
         action: '检测',
@@ -2726,15 +2729,12 @@ const zh: typeof en = {
       },
       precheck: {
         title: '可用性检查',
-        drawerTitle: '可用性检查',
         statusPassed: '通过',
         statusFailed: '未通过',
         failed: '可用性检查未通过',
         conflictTitle: '检查失败，请先处理以下问题',
+        backToEdit: '返回修改',
         confirmDeploy: '开始部署',
-        acknowledge: '我知道了',
-        cancel: '取消',
-        cancelSaved: '取消',
         status: {
           passedShort: '通过',
           warningShort: '警告',
@@ -2757,7 +2757,6 @@ const zh: typeof en = {
       create: {
         action: '添加节点',
         title: '新增节点',
-        back: '返回列表',
         name: '节点名称',
         addr: '节点地址',
         addrRequired: '节点地址不能为空',
@@ -2789,7 +2788,6 @@ const zh: typeof en = {
         vustUrlInvalid: '主控回连地址格式不正确',
         vustUrlHttpsRequired: '主控回连地址必须使用 HTTPS',
         vustUrlBaseRequired: '主控回连地址不能包含路径、查询参数或片段',
-        cancel: '取消',
         submit: '可用性检查',
       },
       form: {

@@ -18,22 +18,26 @@ import {
   VustButton,
   VustCard,
   VustTag,
-  VustDrawer,
   VustInput,
   VustSelect,
   VustAlert,
   VustFormItem,
   VustDescriptions,
   VustActionMenu,
-  VustDialog,
   VustCheckbox,
 } from '@/components/ui'
 import { useToastStore } from '@/stores/toast'
-import { useConfirmationModalStore } from '@/stores/confirmation-modal'
 import { formatDateTime } from '@/utils/time'
+import ApplicationDialog from '@/components/layout/ApplicationDialog.vue'
+import ApplicationConfirmationDialog from '@/components/layout/ApplicationConfirmationDialog.vue'
+import { useApplicationConfirmation } from '@/composables/useApplicationConfirmation'
+import NodeProvisionWorkspace, {
+  type NodeProvisionPhase,
+} from './node-manager/NodeProvisionWorkspace.vue'
 
 const props = defineProps<{
   isMaximized?: boolean
+  windowId?: string
   payload?: Record<string, unknown>
 }>()
 
@@ -42,7 +46,8 @@ const { t } = useI18n()
 const nodeStore = useNodeStore()
 const windowStore = useWindowManagerStore()
 const toastStore = useToastStore()
-const confirmationModal = useConfirmationModalStore()
+const { confirmationState, showConfirmation, handleConfirmationResponse } =
+  useApplicationConfirmation()
 
 const nodes = computed(() => nodeStore.nodes)
 const currentNodeId = computed(() => nodeStore.currentNodeId)
@@ -53,7 +58,7 @@ const selectedNodeId = computed({
     void switchCurrentNode(String(value))
   },
 })
-const isCreateActive = ref(false)
+const activeView = ref<'list' | NodeProvisionPhase>('list')
 const isEditActive = ref(false)
 const editTarget = ref<NodeSummary | null>(null)
 const precheckSubmitting = ref(false)
@@ -69,14 +74,16 @@ const precheckResult = ref<NodePrecheckResponse | null>(null)
 const pendingDeployPayload = ref<Record<string, unknown> | null>(null)
 const deployLogs = ref<string[]>([])
 const deployError = ref('')
-const isDeployDrawerVisible = ref(false)
 const deployTarget = ref<NodeSummary | null>(null)
-const deployPhase = ref<'precheck' | 'deploy' | null>(null)
 const deployProgressPercent = ref(0)
+const deployLaunching = ref(false)
+const deployRunning = ref(false)
+const deployFinished = ref(false)
 let deployPollInterval: number | null = null
 let deployOperationId: string | null = null
-const countdownSeconds = ref(10)
-let countdownTimer: number | null = null
+const hasDeploySession = computed(
+  () => deployLaunching.value || deployRunning.value || deployFinished.value,
+)
 
 const buildNodeSwitchBlockMessage = () => {
   const guard = windowStore.checkBeforeNodeSwitch()
@@ -105,7 +112,7 @@ const switchCurrentNode = async (nodeId: string) => {
   const targetNode = nodeStore.nodes.find((node) => node.id === nodeId)
   toastStore.success(t('app.nodes.switchSuccess', { name: targetNode?.name || nodeId }))
 }
-const createForm = reactive({
+const createFormDefaults = () => ({
   name: '',
   groupId: 'default',
   groupCustom: '',
@@ -122,6 +129,7 @@ const createForm = reactive({
   servicePort: String(DEFAULT_AGENT_PORT),
   vustUrl: '',
 })
+const createForm = reactive(createFormDefaults())
 const editForm = reactive({
   name: '',
   groupId: 'default',
@@ -250,6 +258,15 @@ const checkItemDetail = (item: NodeCheckResponse['ssh']) => {
   }
   return base
 }
+
+const checkItemTagType = (status: string) => {
+  if (status === 'passed') return 'success'
+  if (status === 'warning') return 'warning'
+  if (status === 'skipped') return 'info'
+  return 'danger'
+}
+
+const checkItemStatusText = (status: string) => t(`app.nodes.precheck.status.${status}Short`)
 
 const checkStatusLabel = computed(() => {
   const status = (checkDetail.value?.status ?? '').toLowerCase()
@@ -470,7 +487,9 @@ const checkNode = async (node: NodeSummary) => {
 }
 
 const startCreate = () => {
-  isCreateActive.value = true
+  if (hasDeploySession.value) return
+  Object.assign(createForm, createFormDefaults())
+  activeView.value = 'create'
   isEditActive.value = false
   editTarget.value = null
   precheckResult.value = null
@@ -479,9 +498,17 @@ const startCreate = () => {
 }
 
 const cancelCreate = () => {
-  isCreateActive.value = false
+  activeView.value = 'list'
+  Object.assign(createForm, createFormDefaults())
   precheckResult.value = null
   pendingDeployPayload.value = null
+  deployError.value = ''
+}
+
+const returnToCreate = () => {
+  precheckResult.value = null
+  pendingDeployPayload.value = null
+  activeView.value = 'create'
 }
 
 const validateCreateForm = () => {
@@ -521,6 +548,7 @@ const validateCreateForm = () => {
 }
 
 const submitCreate = async () => {
+  if (precheckSubmitting.value) return
   precheckSubmitting.value = true
   precheckResult.value = null
   deployError.value = ''
@@ -574,8 +602,7 @@ const submitCreate = async () => {
     }
     precheckResult.value = res.data
     pendingDeployPayload.value = res.data.passed ? payload : null
-    isDeployDrawerVisible.value = true
-    deployPhase.value = 'precheck'
+    activeView.value = 'precheck'
     deployLogs.value = []
     deployError.value = ''
     deployTarget.value = {
@@ -609,7 +636,7 @@ const parseAddress = (address: string) => {
 
 const startEdit = async (node: NodeSummary) => {
   if (!node.id || node.id === 'local') return
-  isCreateActive.value = false
+  activeView.value = 'list'
   isEditActive.value = true
   editTarget.value = node
   editError.value = ''
@@ -749,11 +776,12 @@ const handleDeleteAction = async (node: NodeSummary) => {
   const message = useSimpleMessage
     ? t('app.nodes.delete.confirmMessageSimple', { name: node.name })
     : t('app.nodes.delete.confirmMessage', { name: node.name })
-  const confirmed = await confirmationModal.showConfirmation(
+  const confirmed = await showConfirmation(
     message,
     t('app.nodes.delete.confirmTitle'),
     t('app.nodes.delete.confirmAction'),
     t('confirmation.cancel'),
+    'danger',
   )
   if (!confirmed) return
   if (isDeleting(node.id)) return
@@ -852,25 +880,6 @@ const getNodeActions = (node: NodeSummary) => {
   return actions
 }
 
-const startCountdown = () => {
-  stopCountdown()
-  countdownSeconds.value = 10
-  countdownTimer = window.setInterval(() => {
-    countdownSeconds.value -= 1
-    if (countdownSeconds.value <= 0) {
-      stopCountdown()
-      closeDeployDrawer()
-    }
-  }, 1000)
-}
-
-const stopCountdown = () => {
-  if (countdownTimer) {
-    clearInterval(countdownTimer)
-    countdownTimer = null
-  }
-}
-
 const startPollingProgress = (nodeId: string) => {
   stopPollingProgress()
   deployPollInterval = window.setInterval(async () => {
@@ -881,6 +890,8 @@ const startPollingProgress = (nodeId: string) => {
         deployProgressPercent.value = res.data.progressPercent ?? 0
         if (res.data.isFinished) {
           stopPollingProgress()
+          deployRunning.value = false
+          deployFinished.value = true
           if (deployOperationId) {
             windowStore.finishGlobalOperation(deployOperationId)
             deployOperationId = null
@@ -891,7 +902,6 @@ const startPollingProgress = (nodeId: string) => {
             toastStore.success(
               t('app.nodes.deploy.success', { name: deployTarget.value?.name || '' }),
             )
-            startCountdown()
           }
           void fetchNodes()
         }
@@ -910,11 +920,13 @@ const stopPollingProgress = () => {
 }
 
 const startDeploy = async (payload: Record<string, unknown>) => {
+  deployLaunching.value = true
+  deployRunning.value = false
+  deployFinished.value = false
   deployError.value = ''
   deployLogs.value = []
   deployProgressPercent.value = 0
-  isDeployDrawerVisible.value = true
-  deployPhase.value = 'deploy'
+  activeView.value = 'deploy'
   deployTarget.value = {
     id: 'pending',
     name: createForm.name || createForm.addr || '-',
@@ -928,9 +940,11 @@ const startDeploy = async (payload: Record<string, unknown>) => {
     if (!res.success || !res.data?.node?.nodeId) {
       deployError.value = res.message || t('app.nodes.deploy.failed')
       deployLogs.value = [deployError.value]
+      deployFinished.value = true
       return false
     }
     const nodeId = res.data.node.nodeId
+    deployLogs.value = res.data.logs ?? []
     deployOperationId = `node-deploy:${nodeId}`
     windowStore.registerGlobalOperation({
       operationId: deployOperationId,
@@ -941,162 +955,56 @@ const startDeploy = async (payload: Record<string, unknown>) => {
       cancellable: false,
       reason: t('app.nodes.deploy.operationBusy'),
     })
+    deployRunning.value = true
     startPollingProgress(nodeId)
     return true
   } catch {
     deployError.value = t('app.nodes.deploy.failed')
     deployLogs.value = [deployError.value]
+    deployFinished.value = true
     return false
+  } finally {
+    deployLaunching.value = false
   }
 }
 
-const closeDeployDrawer = () => {
-  isDeployDrawerVisible.value = false
-  if (deployOperationId) {
-    stopCountdown()
-    return
-  }
+const showDeployProgress = () => {
+  if (deployRunning.value || deployFinished.value) activeView.value = 'deploy'
+}
+
+const backgroundDeploy = () => {
+  if (deployRunning.value && !deployLaunching.value) activeView.value = 'list'
+}
+
+const finishDeploy = () => {
+  if (!deployFinished.value) return
+  activeView.value = 'list'
   stopPollingProgress()
-  stopCountdown()
   deployLogs.value = []
   deployError.value = ''
   deployProgressPercent.value = 0
   deployTarget.value = null
-  deployPhase.value = null
+  deployFinished.value = false
   pendingDeployPayload.value = null
+  precheckResult.value = null
+  Object.assign(createForm, createFormDefaults())
   void fetchNodes()
+}
+
+const handleProvisionBack = () => {
+  if (activeView.value === 'deploy') {
+    if (deployFinished.value) finishDeploy()
+    else backgroundDeploy()
+    return
+  }
+  cancelCreate()
 }
 
 const confirmDeploy = async () => {
   if (!pendingDeployPayload.value || !precheckResult.value?.passed) return
-  isCreateActive.value = false
   isEditActive.value = false
-  deployPhase.value = 'deploy'
-  const deployed = await startDeploy(pendingDeployPayload.value)
-  if (deployed) {
-    cancelCreate()
-  }
+  await startDeploy(pendingDeployPayload.value)
 }
-
-const deployDrawerTitle = computed(() => {
-  return deployPhase.value === 'precheck'
-    ? t('app.nodes.precheck.drawerTitle')
-    : t('app.nodes.deploy.drawerTitle')
-})
-
-type PrecheckItemStatus = 'passed' | 'warning' | 'failed' | 'skipped'
-
-interface PrecheckItem {
-  key: string
-  label: string
-  status: PrecheckItemStatus
-  message: string
-  slot: string
-}
-
-const precheckStatusTagType = (status: PrecheckItemStatus) => {
-  if (status === 'passed') return 'success'
-  if (status === 'warning') return 'warning'
-  if (status === 'skipped') return 'info'
-  return 'danger'
-}
-
-const precheckStatusText = (status: PrecheckItemStatus) => {
-  return t(`app.nodes.precheck.status.${status}Short`)
-}
-
-const precheckItems = computed<PrecheckItem[]>(() => {
-  if (!precheckResult.value) return []
-  return [
-    {
-      key: 'ssh',
-      label: t('app.nodes.precheck.indicators.ssh'),
-      status: precheckResult.value.ssh.status,
-      message: precheckResult.value.ssh.message,
-      slot: 'ssh',
-    },
-    {
-      key: 'callback',
-      label: t('app.nodes.precheck.indicators.callback'),
-      status: precheckResult.value.callback.status,
-      message: precheckResult.value.callback.message,
-      slot: 'callback',
-    },
-    {
-      key: 'agentStatus',
-      label: t('app.nodes.precheck.indicators.agentStatus'),
-      status: precheckResult.value.agentStatus.blocking ? 'failed' : 'passed',
-      message: precheckResult.value.agentStatus.message,
-      slot: 'agentStatus',
-    },
-    {
-      key: 'os',
-      label: t('app.nodes.precheck.indicators.os'),
-      status: precheckResult.value.os.status,
-      message: precheckResult.value.os.message,
-      slot: 'os',
-    },
-    {
-      key: 'permission',
-      label: t('app.nodes.precheck.indicators.permission'),
-      status: precheckResult.value.permission.status,
-      message: precheckResult.value.permission.message,
-      slot: 'permission',
-    },
-    {
-      key: 'service',
-      label: t('app.nodes.precheck.indicators.service'),
-      status: precheckResult.value.service.status,
-      message: precheckResult.value.service.message,
-      slot: 'service',
-    },
-    {
-      key: 'systemd',
-      label: t('app.nodes.precheck.indicators.systemd'),
-      status: precheckResult.value.systemd.status,
-      message: precheckResult.value.systemd.message,
-      slot: 'systemd',
-    },
-    {
-      key: 'directory',
-      label: t('app.nodes.precheck.indicators.directory'),
-      status: precheckResult.value.directory.status,
-      message: precheckResult.value.directory.message,
-      slot: 'directory',
-    },
-    {
-      key: 'docker',
-      label: t('app.nodes.precheck.indicators.docker'),
-      status: precheckResult.value.docker.status,
-      message: precheckResult.value.docker.message,
-      slot: 'docker',
-    },
-    {
-      key: 'port',
-      label: t('app.nodes.precheck.indicators.port'),
-      status: precheckResult.value.port.status,
-      message: precheckResult.value.port.message,
-      slot: 'port',
-    },
-  ]
-})
-
-const precheckFailedItems = computed(() => {
-  return precheckItems.value.filter((item) => item.status === 'failed')
-})
-
-const precheckPrimaryFailureMessage = computed(() => {
-  if (precheckResult.value?.passed) return ''
-  const serviceMessage = precheckResult.value?.service?.message || ''
-  if (
-    precheckResult.value?.service &&
-    precheckResult.value.service.status === 'failed' &&
-    serviceMessage
-  ) {
-    return serviceMessage
-  }
-  return precheckFailedItems.value[0]?.message || t('app.nodes.precheck.failed')
-})
 
 const executeNodeAction = async (node: NodeSummary, action: 'repair' | 'retire' | 'uninstall') => {
   const actionLabel = t(`app.nodes.actions.${action}`)
@@ -1111,11 +1019,12 @@ const executeNodeAction = async (node: NodeSummary, action: 'repair' | 'retire' 
   const confirmMessage = isUninstallingCurrentNode
     ? t('app.nodes.actions.confirmCurrentUninstallMessage', { name: node.name })
     : t('app.nodes.actions.confirmMessage', { action: actionLabel, name: node.name })
-  const confirmed = await confirmationModal.showConfirmation(
+  const confirmed = await showConfirmation(
     confirmMessage,
     t('app.nodes.actions.confirmTitle'),
     actionLabel,
     t('confirmation.cancel'),
+    action === 'repair' ? 'primary' : 'danger',
   )
   if (!confirmed) return
 
@@ -1169,10 +1078,7 @@ watch(
 
 onUnmounted(() => {
   nodeStore.startAutoRefresh(10000)
-  if (!deployOperationId) {
-    stopPollingProgress()
-  }
-  stopCountdown()
+  stopPollingProgress()
 })
 
 const isUpgradeDialogOpen = ref(false)
@@ -1250,16 +1156,39 @@ const submitUpgradePlan = async () => {
   }
 }
 
+const nodeManagerBusy = computed(
+  () =>
+    precheckSubmitting.value ||
+    deployLaunching.value ||
+    deployRunning.value ||
+    editSubmitting.value ||
+    upgradeSubmitting.value,
+)
+
+watch(
+  nodeManagerBusy,
+  (busy) => {
+    if (!props.windowId) return
+    windowStore.updateWindowRuntimeState(props.windowId, {
+      busy,
+      allowsNodeSwitch: !busy,
+      blockLevel: busy ? 'busy' : 'open',
+      blockReason: busy ? t('app.nodes.guardBusy') : t('app.nodes.guardOpen'),
+    })
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
   fetchNodes()
 })
 </script>
 
 <template>
-  <div class="node-manager" data-vust-app="nodes">
+  <div class="node-manager" data-page="node-manager" data-vust-app="nodes">
     <!-- 升级引导 Alert 提示条 -->
     <VustAlert
-      v-if="showUpgradeGuide"
+      v-if="showUpgradeGuide && activeView === 'list'"
       :title="t('app.nodes.upgradeGuideTitle')"
       type="info"
       closeable
@@ -1269,16 +1198,32 @@ onMounted(() => {
       {{ t('app.nodes.upgradeGuideDesc') }}
     </VustAlert>
 
-    <VustCard shadow="never" class="toolbar-card">
-      <div class="toolbar">
+    <VustCard v-if="activeView === 'list'" shadow="never" class="toolbar-card">
+      <div class="toolbar" data-ui="toolbar">
         <div class="toolbar-left">
-          <VustButton type="primary" @click="startCreate">
+          <VustButton
+            type="primary"
+            :disabled="hasDeploySession"
+            data-ui="node-create"
+            @click="startCreate"
+          >
             {{ t('app.nodes.create.action') }}
+          </VustButton>
+          <VustButton
+            v-if="hasDeploySession"
+            type="secondary"
+            data-ui="node-deploy-resume"
+            @click="showDeployProgress"
+          >
+            {{
+              deployFinished ? t('app.nodes.deploy.viewResult') : t('app.nodes.deploy.viewProgress')
+            }}
           </VustButton>
           <VustButton
             type="primary"
             :class="{ 'upgrade-btn-highlight': showUpgradeGuide }"
             :disabled="selectedNodeIds.length === 0"
+            data-ui="node-upgrade-selected"
             @click="openUpgradeDialog"
           >
             {{ t('app.nodes.upgradeSelected') }}
@@ -1301,7 +1246,12 @@ onMounted(() => {
       </div>
     </VustCard>
 
-    <VustCard v-if="selectedRemoteNodeId" shadow="never" class="detail-card">
+    <VustCard
+      v-if="activeView === 'list' && selectedRemoteNodeId"
+      shadow="never"
+      class="detail-card"
+      data-slot="detail"
+    >
       <template #header>
         <div class="drawer-list-header">
           <span>{{ t('app.nodes.detail.title') }}</span>
@@ -1400,11 +1350,14 @@ onMounted(() => {
       <VustLoading :loading="nodeDetailLoading" cover />
     </VustCard>
 
-    <VustDialog
+    <ApplicationDialog
       :visible="isEditActive"
       :title="t('app.nodes.form.editNode')"
       width="720px"
       :close-on-click-overlay="false"
+      :close-disabled="editSubmitting"
+      initial-focus-selector="[data-ui='node-edit-name'] input"
+      data-ui="node-edit-dialog"
       @close="cancelEdit"
     >
       <form class="node-edit-form" style="position: relative" @submit.prevent>
@@ -1413,7 +1366,7 @@ onMounted(() => {
           <div class="form-section-title">{{ t('app.nodes.sections.basic') }}</div>
           <div class="form-grid-2col">
             <VustFormItem :label="t('app.nodes.create.name')">
-              <VustInput v-model="editForm.name" />
+              <VustInput v-model="editForm.name" data-ui="node-edit-name" />
             </VustFormItem>
             <VustFormItem :label="t('app.nodes.create.addr')">
               <VustInput v-model="editForm.addr" />
@@ -1524,7 +1477,9 @@ onMounted(() => {
       </form>
 
       <template #footer>
-        <VustButton @click="cancelEdit">{{ t('app.nodes.edit.cancel') }}</VustButton>
+        <VustButton :disabled="editSubmitting" @click="cancelEdit">
+          {{ t('app.nodes.edit.cancel') }}
+        </VustButton>
         <VustButton
           type="primary"
           :loading="editSubmitting"
@@ -1534,14 +1489,10 @@ onMounted(() => {
           {{ t('app.nodes.edit.submit') }}
         </VustButton>
       </template>
-    </VustDialog>
+    </ApplicationDialog>
 
-    <VustCard v-if="deployPhase === 'deploy'" shadow="never" class="content-card deploying-card">
-      <VustLoading :loading="true" :text="t('app.nodes.deploy.inProgress')" />
-    </VustCard>
-
-    <VustCard v-else shadow="never" class="table-card">
-      <VustTable :data="nodes" :columns="columns" border class="nodes-table">
+    <VustCard v-if="activeView === 'list'" shadow="never" class="table-card">
+      <VustTable :data="nodes" :columns="columns" border class="nodes-table" data-ui="table">
         <!-- 这里只需处理具有 slot 的列 -->
         <template #selectionHeader>
           <VustCheckbox
@@ -1608,9 +1559,11 @@ onMounted(() => {
       <VustLoading :loading="nodeDetailLoading" cover />
     </VustCard>
 
-    <VustDrawer
-      v-model="isCheckDrawerVisible"
+    <ApplicationDialog
+      :visible="isCheckDrawerVisible"
       :title="t('app.nodes.check.drawerTitle')"
+      width="680px"
+      data-ui="node-check-dialog"
       @close="closeCheckDrawer"
     >
       <VustDescriptions
@@ -1641,8 +1594,8 @@ onMounted(() => {
           <template #header>
             <div class="drawer-list-header">
               <span>{{ detail.label }}</span>
-              <VustTag :type="precheckStatusTagType(detail.item.status)">
-                {{ precheckStatusText(detail.item.status) }}
+              <VustTag :type="checkItemTagType(detail.item.status)">
+                {{ checkItemStatusText(detail.item.status) }}
               </VustTag>
             </div>
           </template>
@@ -1655,255 +1608,36 @@ onMounted(() => {
           t('app.nodes.check.close')
         }}</VustButton>
       </template>
-    </VustDrawer>
+    </ApplicationDialog>
 
-    <VustDialog
-      :visible="isDeployDrawerVisible"
-      :title="deployDrawerTitle"
-      width="650px"
-      :close-on-click-overlay="false"
-      z-index="calc(var(--vdl-z-index-modal) + 10)"
-      @close="closeDeployDrawer"
-    >
-      <div v-if="deployPhase === 'precheck'" class="drawer-section">
-        <div class="drawer-list-header">
-          <span>{{ t('app.nodes.precheck.title') }}</span>
-          <VustTag :type="precheckResult?.passed ? 'success' : 'danger'">
-            {{
-              precheckResult?.passed
-                ? t('app.nodes.precheck.statusPassed')
-                : t('app.nodes.precheck.statusFailed')
-            }}
-          </VustTag>
-        </div>
-
-        <VustAlert
-          v-if="!precheckResult?.passed"
-          :title="t('app.nodes.precheck.conflictTitle')"
-          :description="precheckPrimaryFailureMessage"
-          type="error"
-          show-icon
-        />
-
-        <VustDescriptions :items="precheckItems" border>
-          <template v-for="detail in precheckItems" :key="detail.key" #[detail.slot]>
-            <div class="precheck-item-row">
-              <VustTag :type="precheckStatusTagType(detail.status)">
-                {{ precheckStatusText(detail.status) }}
-              </VustTag>
-              <span class="precheck-detail-msg">{{ detail.message || '-' }}</span>
-            </div>
-          </template>
-        </VustDescriptions>
-      </div>
-
-      <div v-else class="drawer-section">
-        <VustDescriptions
-          :items="[
-            { label: t('app.nodes.deploy.target'), slot: 'target' },
-            { label: t('app.nodes.deploy.statusLabel'), slot: 'status' },
-          ]"
-          border
-          class="drawer-meta"
-        >
-          <template #target>
-            {{ deployTarget?.name ?? '-' }}
-          </template>
-          <template #status>
-            <VustTag
-              :type="deployError ? 'danger' : deployProgressPercent === 100 ? 'success' : 'warning'"
-            >
-              {{
-                deployError
-                  ? t('app.nodes.deploy.statusFailed')
-                  : deployProgressPercent === 100
-                    ? t('app.nodes.deploy.statusSuccess')
-                    : `${t('app.nodes.deploy.statusRunning')}${deployProgressPercent > 0 ? ` (${deployProgressPercent}%)` : ''}`
-              }}
-            </VustTag>
-          </template>
-        </VustDescriptions>
-
-        <VustAlert v-if="deployError" :title="deployError" type="error" show-icon />
-
-        <div class="logs-container">
-          <div v-if="deployLogs.length === 0" class="deploy-empty">
-            {{ deployError ? t('app.nodes.deploy.noLogs') : t('app.nodes.deploy.deploying') }}
-          </div>
-          <div v-for="(line, index) in deployLogs" :key="index" class="deploy-line">{{ line }}</div>
-        </div>
-      </div>
-
-      <template #footer>
-        <div v-if="deployPhase === 'precheck'" class="nodes-panel-footer">
-          <VustButton v-if="!precheckResult?.passed" type="primary" @click="closeDeployDrawer">
-            {{ t('app.nodes.precheck.acknowledge') }}
-          </VustButton>
-          <template v-else>
-            <VustButton class="precheck-footer-button" @click="closeDeployDrawer">
-              {{ t('app.nodes.precheck.cancelSaved') }}
-            </VustButton>
-            <VustButton class="precheck-footer-button" type="primary" @click="confirmDeploy">
-              {{ t('app.nodes.precheck.confirmDeploy') }}
-            </VustButton>
-          </template>
-        </div>
-        <div v-else class="nodes-panel-footer">
-          <VustButton
-            v-if="deployProgressPercent === 100 && !deployError"
-            type="primary"
-            @click="closeDeployDrawer"
-          >
-            {{ t('app.nodes.deploy.close') + ' (' + countdownSeconds + 's)' }}
-          </VustButton>
-          <VustButton v-else type="primary" @click="closeDeployDrawer">
-            {{ t('app.nodes.deploy.close') }}
-          </VustButton>
-        </div>
-      </template>
-    </VustDialog>
-
-    <VustDialog
-      :visible="isCreateActive"
-      :title="t('app.nodes.create.title')"
-      width="720px"
-      :close-on-click-overlay="false"
-      @close="cancelCreate"
-    >
-      <form class="node-create-form" @submit.prevent>
-        <!-- 基础配置 -->
-        <div class="form-section">
-          <div class="form-section-title">{{ t('app.nodes.sections.basic') }}</div>
-          <div class="form-grid-2col">
-            <VustFormItem :label="t('app.nodes.create.name')">
-              <VustInput v-model="createForm.name" />
-            </VustFormItem>
-            <VustFormItem :label="t('app.nodes.create.addr')">
-              <VustInput v-model="createForm.addr" />
-            </VustFormItem>
-            <VustFormItem :label="t('app.nodes.create.port')">
-              <VustInput v-model="createForm.port" />
-            </VustFormItem>
-            <VustFormItem :label="t('app.nodes.create.user')">
-              <VustInput v-model="createForm.user" autocomplete="username" />
-            </VustFormItem>
-          </div>
-        </div>
-
-        <!-- 认证配置 -->
-        <div class="form-section">
-          <div class="form-section-title">{{ t('app.nodes.sections.auth') }}</div>
-          <div class="form-grid-2col">
-            <VustFormItem :label="t('app.nodes.create.authMode')">
-              <VustSelect
-                v-model="createForm.authMode"
-                :options="[
-                  { label: t('app.nodes.create.authPassword'), value: 'password' },
-                  { label: t('app.nodes.create.authKey'), value: 'key' },
-                ]"
-              />
-            </VustFormItem>
-            <VustFormItem
-              v-if="createForm.authMode === 'password'"
-              :label="t('app.nodes.create.password')"
-            >
-              <input type="text" autocomplete="username" style="display: none" />
-              <VustInput
-                v-model="createForm.pwd"
-                type="password"
-                show-password
-                autocomplete="new-password"
-              />
-            </VustFormItem>
-            <VustFormItem v-else :label="t('app.nodes.create.privateKeyPassphrase')">
-              <input type="text" autocomplete="username" style="display: none" />
-              <VustInput
-                v-model="createForm.privateKeyPassphrase"
-                type="password"
-                show-password
-                autocomplete="new-password"
-              />
-            </VustFormItem>
-
-            <template v-if="createForm.authMode === 'key'">
-              <div class="grid-col-2">
-                <VustFormItem :label="t('app.nodes.create.privateKey')">
-                  <VustInput
-                    v-model="createForm.privateKey"
-                    :placeholder="t('app.nodes.create.privateKeyPlaceholder')"
-                  />
-                  <div class="form-hint">{{ t('app.nodes.create.privateKeyHint') }}</div>
-                </VustFormItem>
-              </div>
-            </template>
-          </div>
-        </div>
-
-        <!-- 分组与描述 -->
-        <div class="form-section">
-          <div class="form-section-title">{{ t('app.nodes.sections.group') }}</div>
-          <div class="form-grid-2col">
-            <VustFormItem :label="t('app.nodes.create.groupId')">
-              <VustSelect
-                v-model="createForm.groupId"
-                :options="[
-                  { label: t('app.nodes.create.groupDefault'), value: 'default' },
-                  { label: t('app.nodes.create.groupCustom'), value: 'custom' },
-                ]"
-              />
-            </VustFormItem>
-            <VustFormItem
-              v-if="createForm.groupId === 'custom'"
-              :label="t('app.nodes.create.groupCustomInput')"
-            >
-              <VustInput v-model="createForm.groupCustom" />
-            </VustFormItem>
-            <VustFormItem :label="t('app.nodes.create.tags')">
-              <VustInput v-model="createForm.tags" />
-            </VustFormItem>
-            <VustFormItem :label="t('app.nodes.create.description')" class="grid-col-2">
-              <VustInput v-model="createForm.description" />
-            </VustFormItem>
-          </div>
-        </div>
-
-        <!-- 部署配置 -->
-        <div class="form-section">
-          <div class="form-section-title">{{ t('app.nodes.sections.install') }}</div>
-          <div class="form-grid-2col">
-            <VustFormItem :label="t('app.nodes.create.installDir')">
-              <VustInput
-                v-model="createForm.installDir"
-                :placeholder="t('app.nodes.create.installDirPlaceholder')"
-              />
-            </VustFormItem>
-            <VustFormItem :label="t('app.nodes.create.servicePort')">
-              <VustInput v-model="createForm.servicePort" />
-            </VustFormItem>
-            <VustFormItem :label="t('app.nodes.create.vustUrl')" class="grid-col-2">
-              <VustInput
-                v-model="createForm.vustUrl"
-                :placeholder="t('app.nodes.create.vustUrlPlaceholder')"
-              />
-              <div class="form-hint">{{ t('app.nodes.create.vustUrlHint') }}</div>
-            </VustFormItem>
-          </div>
-        </div>
-      </form>
-
-      <template #footer>
-        <VustButton @click="cancelCreate">{{ t('app.nodes.create.cancel') }}</VustButton>
-        <VustButton type="primary" :loading="precheckSubmitting" @click="submitCreate">
-          {{ t('app.nodes.create.submit') }}
-        </VustButton>
-      </template>
-    </VustDialog>
+    <NodeProvisionWorkspace
+      v-if="activeView !== 'list'"
+      :phase="activeView"
+      :form="createForm"
+      :precheck-result="precheckResult"
+      :precheck-submitting="precheckSubmitting"
+      :deploy-launching="deployLaunching"
+      :deploy-running="deployRunning"
+      :deploy-finished="deployFinished"
+      :deploy-target-name="deployTarget?.name || ''"
+      :deploy-progress-percent="deployProgressPercent"
+      :deploy-logs="deployLogs"
+      :deploy-error="deployError"
+      @back="handleProvisionBack"
+      @precheck="submitCreate"
+      @edit="returnToCreate"
+      @deploy="confirmDeploy"
+      @background="backgroundDeploy"
+    />
 
     <!-- 弹窗：精细化升级配置 -->
-    <VustDialog
+    <ApplicationDialog
       :visible="isUpgradeDialogOpen"
       :title="t('app.nodes.upgradeDialog.title')"
       width="600px"
+      :close-disabled="upgradeSubmitting"
+      return-focus-selector="[data-ui='node-upgrade-selected']"
+      data-ui="node-upgrade-dialog"
       @close="isUpgradeDialogOpen = false"
     >
       <div class="dialog-detail-content flex-column gap-layout">
@@ -1953,7 +1687,7 @@ onMounted(() => {
       </div>
 
       <template #footer>
-        <VustButton @click="isUpgradeDialogOpen = false">
+        <VustButton :disabled="upgradeSubmitting" @click="isUpgradeDialogOpen = false">
           {{ t('app.nodes.upgradeDialog.cancel') }}
         </VustButton>
         <VustButton
@@ -1965,7 +1699,19 @@ onMounted(() => {
           {{ t('app.nodes.upgradeDialog.submit') }}
         </VustButton>
       </template>
-    </VustDialog>
+    </ApplicationDialog>
+
+    <ApplicationConfirmationDialog
+      :visible="confirmationState.visible"
+      :title="confirmationState.title"
+      :message="confirmationState.message"
+      :confirm-text="confirmationState.confirmText"
+      :cancel-text="confirmationState.cancelText"
+      :type="confirmationState.type"
+      dialog-ui="node-confirmation-dialog"
+      @confirm="handleConfirmationResponse(true)"
+      @cancel="handleConfirmationResponse(false)"
+    />
   </div>
 </template>
 
@@ -1985,58 +1731,6 @@ onMounted(() => {
   padding: var(--vdl-space-3);
   background: var(--vdl-bg-canvas);
   box-sizing: border-box;
-}
-
-/* --- 表单页面布局 --- */
-.form-page {
-  display: flex;
-  justify-content: center;
-  overflow-y: auto;
-  padding-bottom: var(--vdl-space-8);
-}
-
-.form-container {
-  width: 100%;
-  max-width: 800px;
-  height: fit-content;
-  flex-shrink: 0;
-}
-
-.form-header {
-  display: flex;
-  align-items: center;
-  gap: var(--vdl-space-4);
-}
-
-.back-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--vdl-space-2);
-  background: transparent;
-  border: 1px solid var(--vdl-border-default);
-  border-radius: var(--vdl-radius-sm);
-  color: var(--vdl-text-secondary);
-  padding: var(--vdl-space-1) var(--vdl-space-3);
-  font-size: var(--vdl-font-caption);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.back-btn:hover {
-  background: var(--vdl-bg-hover);
-  color: var(--vdl-text-primary);
-  border-color: var(--vdl-border-brand);
-}
-
-.back-icon {
-  font-size: 16px;
-  line-height: 1;
-}
-
-.form-title {
-  font-size: var(--vdl-font-subtitle);
-  font-weight: 700;
-  color: var(--vdl-text-primary);
 }
 
 .toolbar-card {
@@ -2066,7 +1760,6 @@ onMounted(() => {
   width: 150px;
 }
 
-.content-card,
 .table-card {
   flex: 1;
   min-height: 0;
@@ -2099,63 +1792,12 @@ onMounted(() => {
   gap: var(--vdl-space-1);
 }
 
-/* --- 自研表单系统布局 --- */
-.form {
-  display: flex;
-  flex-direction: column;
-}
-
-.vl-form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--vdl-space-3) var(--vdl-space-6);
-}
-
-.vl-form-col-full {
-  grid-column: span 2;
-}
-
-.vl-form-divider {
-  margin: var(--vdl-space-5) 0 var(--vdl-space-3);
-  padding-bottom: var(--vdl-space-2);
-  border-bottom: 1px solid var(--vdl-border-subtle);
-  color: var(--vdl-text-primary);
-  font-size: var(--vdl-font-body-sm);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.vl-form-divider:first-child {
-  margin-top: 0;
-}
-
 .form-hint {
   margin-top: var(--vdl-space-1);
   font-size: var(--vdl-font-caption);
   color: var(--vdl-text-muted);
 }
 
-.panel-footer {
-  margin-top: var(--vdl-space-4);
-  padding-top: var(--vdl-space-4);
-  border-top: 1px solid var(--vdl-border-subtle);
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--vdl-space-3);
-}
-
-.nodes-panel-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--vdl-space-3);
-}
-
-:deep(.precheck-footer-button) {
-  width: 104px;
-}
-
-/* --- 抽屉与详情内容 --- */
 .detail-body {
   position: relative;
   min-height: 100px;
@@ -2183,107 +1825,21 @@ onMounted(() => {
   gap: var(--vdl-space-2);
 }
 
-.drawer-section {
-  display: grid;
-  gap: var(--vdl-space-3);
-}
-
-.history-section {
-  margin-top: var(--vdl-space-6);
-}
-
-.history-list {
-  display: grid;
-  gap: var(--vdl-space-2);
-}
-
-.history-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--vdl-space-2);
-  margin-bottom: var(--vdl-space-1);
-}
-
-.history-card-body {
-  font-size: var(--vdl-font-body-sm);
-  color: var(--vdl-text-secondary);
-}
-
-.history-card-meta {
-  margin-top: var(--vdl-space-1);
-  font-size: var(--vdl-font-caption);
-  color: var(--vdl-text-muted);
-}
-
 .check-item-detail {
   font-size: var(--vdl-font-body-sm);
   line-height: 1.5;
 }
 
-.precheck-item-row {
-  display: flex;
-  align-items: center;
-  gap: var(--vdl-space-2);
-}
-
-/* --- 空状态与加载 --- */
 .empty-state {
   padding: var(--vdl-space-8);
   text-align: center;
   color: var(--vdl-text-muted);
 }
 
-.empty-state-sm {
-  padding: var(--vdl-space-4);
-  text-align: center;
-  color: var(--vdl-text-muted);
-  font-size: var(--vdl-font-caption);
-}
-
-.deploying-card {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 200px;
-}
-
-/* --- 日志容器 --- */
-.logs-container {
-  border: 1px solid var(--vdl-border-default);
-  border-radius: var(--vdl-radius-md);
-  padding: var(--vdl-space-3);
-  max-height: 360px;
-  overflow-y: auto;
-  background-color: var(--vdl-bg-muted);
-  scrollbar-width: thin;
-}
-
-.deploy-empty {
-  color: var(--vdl-text-muted);
-  font-size: var(--vdl-font-caption);
-}
-
-.deploy-line {
-  font-family: var(--vdl-font-mono);
-  font-size: var(--vdl-font-code);
-  line-height: 1.5;
-  padding: 2px 0;
-  color: var(--vdl-text-secondary);
-  word-break: break-all;
-}
-
 @media (max-width: 1200px) {
   .detail-grid {
     grid-template-columns: 1fr;
   }
-}
-
-/* 对话框内的新增节点表单 */
-.node-create-form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vdl-space-4);
 }
 
 .form-section {
@@ -2313,15 +1869,6 @@ onMounted(() => {
   grid-column: span 2;
 }
 
-@media (max-width: 960px) {
-  .vl-form-grid {
-    grid-template-columns: 1fr;
-  }
-  .vl-form-col-full {
-    grid-column: span 1;
-  }
-}
-
 .toolbar-left {
   display: flex;
   gap: var(--vdl-space-3);
@@ -2330,13 +1877,13 @@ onMounted(() => {
 
 @keyframes pulse-border {
   0% {
-    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--vdl-primary) 70%, transparent);
   }
   70% {
-    box-shadow: 0 0 0 6px rgba(59, 130, 246, 0);
+    box-shadow: 0 0 0 6px transparent;
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+    box-shadow: 0 0 0 0 transparent;
   }
 }
 
