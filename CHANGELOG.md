@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.1.0-alpha.2](https://github.com/vustcc/vust/compare/0.1.0-alpha.1...0.1.0-alpha.2) - 2026-10-05
+
 ### Added
 
 - 登录页新增 GitHub 项目入口、浅色与深色主题切换，以及中文与英文语言选择。

@@ -4835,7 +4835,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vust"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "anyhow",
  "axum",
@@ -4889,7 +4889,7 @@ dependencies = [
 
 [[package]]
 name = "vust-agent"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "anyhow",
  "axum",
@@ -4936,7 +4936,7 @@ dependencies = [
 
 [[package]]
 name = "vust-api"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "axum",
  "bcrypt",
@@ -4956,7 +4956,7 @@ dependencies = [
 
 [[package]]
 name = "vust-contracts"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "axum",
  "chrono",
@@ -4968,7 +4968,7 @@ dependencies = [
 
 [[package]]
 name = "vust-ctl"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "anyhow",
  "bcrypt",
@@ -4981,7 +4981,7 @@ dependencies = [
 
 [[package]]
 name = "vust-security"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "anyhow",
  "rcgen",
@@ -4990,7 +4990,7 @@ dependencies = [
 
 [[package]]
 name = "vust-upgrade"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "base64",
  "blake2b_simd",
