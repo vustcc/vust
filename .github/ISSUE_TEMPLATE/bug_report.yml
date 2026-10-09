@@ -62,8 +62,15 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: 日志或截图
+      label: 日志
       description: 粘贴相关日志，注意脱敏。
       render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图
+      description: 可直接拖拽或粘贴图片到此处上传。注意脱敏。
     validations:
       required: false
