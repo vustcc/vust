@@ -374,8 +374,10 @@ const en = {
           delivering: '[System] Submitting Docker installation request. Please wait...',
           execDone: '[System] Docker installation completed. The service is ready.',
           exitCode: '[Error] Docker installation process exited with code: {code}',
+          timeout: '[Error] Docker installation timed out and was terminated.',
           commError: '[Error] Docker installation request failed: {error}',
           networkError: 'Network connection failed or request timed out',
+          missingResult: 'No Docker installation result was received',
         },
         simulatedLogs: {
           precheck: '[System] Running safety precheck on the current node host...',

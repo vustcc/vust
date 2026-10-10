@@ -29,4 +29,21 @@ describe('Docker 批量容器操作请求', () => {
       { timeout: 610_000 },
     )
   })
+
+  it('安装请求为 Agent 返回执行结果预留时间', async () => {
+    await dockerApi.installDocker(600)
+    await dockerApi.forNode('node-1').installDocker(600)
+    expect(http.post).toHaveBeenNthCalledWith(
+      1,
+      '/agent/docker/install',
+      { mirror: 'official', timeoutSecs: 600 },
+      { timeout: 610_000 },
+    )
+    expect(http.post).toHaveBeenNthCalledWith(
+      2,
+      '/node/node-1/agent/docker/install',
+      { mirror: 'official', timeoutSecs: 600 },
+      { timeout: 610_000 },
+    )
+  })
 })

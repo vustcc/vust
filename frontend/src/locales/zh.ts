@@ -359,8 +359,10 @@ const zh: typeof en = {
           delivering: '[系统指示] 正在提交 Docker 安装请求，请稍候...',
           execDone: '[系统指示] Docker 安装完成，服务已就绪。',
           exitCode: '[错误] Docker 安装进程退出，状态码：{code}',
+          timeout: '[错误] Docker 安装任务超时，已终止。',
           commError: '[错误] Docker 安装请求失败：{error}',
           networkError: '网络连接异常或请求超时',
+          missingResult: '未收到 Docker 安装执行结果',
         },
         simulatedLogs: {
           precheck: '[系统指示] 正在对当前节点宿主机环境进行安全预检...',

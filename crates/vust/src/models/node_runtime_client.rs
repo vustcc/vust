@@ -158,7 +158,7 @@ impl NodeRuntimeClient {
         let url = self.build_uri(path);
         let mut request = self.authorize(self.client.post(url)).json(payload);
         if is_long_running_request(path) {
-            request = request.timeout(Duration::from_secs(PROXY_LONG_RUNNING_REQUEST_TIMEOUT_SECS));
+            request = request.timeout(long_running_request_timeout(path));
         }
         let resp = request.send().await?;
         decode_json_response("POST", path, resp).await
@@ -182,7 +182,7 @@ impl NodeRuntimeClient {
         )
         .json(payload);
         if is_long_running_request(path) {
-            request = request.timeout(Duration::from_secs(PROXY_LONG_RUNNING_REQUEST_TIMEOUT_SECS));
+            request = request.timeout(long_running_request_timeout(path));
         }
         let response = request.send().await?;
         decode_json_response("POST", path, response).await
@@ -218,7 +218,7 @@ impl NodeRuntimeClient {
             .with_system_operation_context(self.client.post(url), source, trace_id)
             .json(payload);
         if is_long_running_request(path) {
-            request = request.timeout(Duration::from_secs(PROXY_LONG_RUNNING_REQUEST_TIMEOUT_SECS));
+            request = request.timeout(long_running_request_timeout(path));
         }
         let response = request.send().await?;
         decode_json_response("POST", path, response).await
@@ -396,8 +396,7 @@ impl NodeRuntimeClient {
         if is_file_content_stream(uri_path) {
             req_builder = req_builder.timeout(Duration::from_secs(PROXY_FILE_STREAM_TIMEOUT_SECS));
         } else if is_long_running_request(uri_path) {
-            req_builder =
-                req_builder.timeout(Duration::from_secs(PROXY_LONG_RUNNING_REQUEST_TIMEOUT_SECS));
+            req_builder = req_builder.timeout(long_running_request_timeout(uri_path));
         }
 
         let result = req_builder.send().await;
@@ -485,6 +484,19 @@ fn apply_operation_context(
     match client_ip {
         Some(client_ip) => request.header("x-vust-client-ip", client_ip),
         None => request,
+    }
+}
+
+/// Docker 安装最长执行 1800 秒，额外预留结果返回时间。
+fn long_running_request_timeout(path: &str) -> Duration {
+    if path
+        .split('?')
+        .next()
+        .is_some_and(|value| value.ends_with("/agent/docker/install"))
+    {
+        Duration::from_secs(1_810)
+    } else {
+        Duration::from_secs(PROXY_LONG_RUNNING_REQUEST_TIMEOUT_SECS)
     }
 }
 
@@ -703,8 +715,9 @@ fn dedupe_vary(headers: &mut HeaderMap) {
 #[cfg(test)]
 mod tests {
     use super::{
-        NodeRuntimeClient, StatusCode, apply_operation_context, decode_domain_body,
-        decode_json_body, is_file_content_stream, is_long_running_request,
+        NodeRuntimeClient, PROXY_LONG_RUNNING_REQUEST_TIMEOUT_SECS, StatusCode,
+        apply_operation_context, decode_domain_body, decode_json_body, is_file_content_stream,
+        is_long_running_request, long_running_request_timeout,
     };
     use crate::models::node_identities::{NodeIdentityRecord, insert_node_identity};
     use crate::models::node_sessions::{NodeSessionRecord, insert_node_session};
@@ -787,6 +800,24 @@ mod tests {
         assert!(!is_long_running_request(
             "/api/v1/agent/docker/suite/vust-host-scanner/proxy/main/api/tasks/task_1"
         ));
+    }
+
+    #[test]
+    fn docker_install_timeout_allows_agent_to_return_timeout_result() {
+        for path in [
+            "/api/v1/agent/docker/install",
+            "/api/v1/node/node-1/agent/docker/install?source=web",
+        ] {
+            assert!(is_long_running_request(path));
+            assert_eq!(
+                long_running_request_timeout(path),
+                std::time::Duration::from_secs(1_810)
+            );
+        }
+        assert_eq!(
+            long_running_request_timeout("/api/v1/agent/docker/suites/install"),
+            std::time::Duration::from_secs(PROXY_LONG_RUNNING_REQUEST_TIMEOUT_SECS)
+        );
     }
 
     #[test]

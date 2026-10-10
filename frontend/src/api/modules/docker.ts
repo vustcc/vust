@@ -341,7 +341,7 @@ const createScopedDockerApi = (nodeId?: string) => ({
         timeoutSecs,
       },
       {
-        timeout: timeoutSecs * 1000,
+        timeout: timeoutSecs * 1000 + 10_000,
       },
     )
   },
