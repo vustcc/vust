@@ -354,6 +354,14 @@ const zh: typeof en = {
         viewProgress: '查看安装进度',
         backgroundRunning: '⚡ Docker 正在后台极速安装中，点击即可恢复终端查看进度...',
         closeConsoleBackground: '后台运行',
+        console: {
+          initChannel: '[系统指示] 正在准备目标节点的 Docker 安装任务...',
+          delivering: '[系统指示] 正在提交 Docker 安装请求，请稍候...',
+          execDone: '[系统指示] Docker 安装完成，服务已就绪。',
+          exitCode: '[错误] Docker 安装进程退出，状态码：{code}',
+          commError: '[错误] Docker 安装请求失败：{error}',
+          networkError: '网络连接异常或请求超时',
+        },
         simulatedLogs: {
           precheck: '[系统指示] 正在对当前节点宿主机环境进行安全预检...',
           environmentPassed: '[系统指示] 宿主机环境校验通过：检测到 Ubuntu x86_64 宿主操作系统。',

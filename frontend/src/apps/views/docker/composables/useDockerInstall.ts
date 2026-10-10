@@ -104,8 +104,8 @@ export function useDockerInstall(options: UseDockerInstallOptions) {
     })
     installSuccess.value = null
     installLogs.value = [
-      t('app.scriptManager.console.initChannel'),
-      t('app.scriptManager.console.delivering'),
+      t('app.docker.install.console.initChannel'),
+      t('app.docker.install.console.delivering'),
     ]
     scrollToTerminalBottom()
 
@@ -207,7 +207,7 @@ export function useDockerInstall(options: UseDockerInstallOptions) {
           if (checkSuccess) {
             installSuccess.value = true
             success = true
-            installLogs.value.push(t('app.scriptManager.console.execDone'))
+            installLogs.value.push(t('app.docker.install.console.execDone'))
             scrollToTerminalBottom()
           } else {
             installSuccess.value = false
@@ -217,7 +217,7 @@ export function useDockerInstall(options: UseDockerInstallOptions) {
         } else {
           installSuccess.value = false
           installLogs.value.push(
-            t('app.scriptManager.console.exitCode', { code: String(payload.exitCode) }),
+            t('app.docker.install.console.exitCode', { code: String(payload.exitCode) }),
           )
           scrollToTerminalBottom()
         }
@@ -229,8 +229,8 @@ export function useDockerInstall(options: UseDockerInstallOptions) {
       }
       installSuccess.value = false
       const errMsg =
-        err instanceof Error ? err.message : t('app.scriptManager.messages.networkTimeout')
-      installLogs.value.push(t('app.scriptManager.console.commError', { error: errMsg }))
+        err instanceof Error ? err.message : t('app.docker.install.console.networkError')
+      installLogs.value.push(t('app.docker.install.console.commError', { error: errMsg }))
       scrollToTerminalBottom()
     } finally {
       isInstallingDocker.value = false
