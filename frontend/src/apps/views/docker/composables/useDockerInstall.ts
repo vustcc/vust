@@ -163,64 +163,71 @@ export function useDockerInstall(options: UseDockerInstallOptions) {
         simTimer = null
       }
 
-      if (res.data) {
-        const payload = res.data
+      if (!res.success) {
+        throw new Error(res.message || t('app.docker.install.console.missingResult'))
+      }
+      if (!res.data) {
+        throw new Error(t('app.docker.install.console.missingResult'))
+      }
+      const payload = res.data
 
-        // 清理原先只有两句的伪日志提示，直接追加真实日志以确保信息真实与精准
-        installLogs.value.push(t('app.docker.install.simulatedLogs.realOutput'))
+      // 清理原先只有两句的伪日志提示，直接追加真实日志以确保信息真实与精准
+      installLogs.value.push(t('app.docker.install.simulatedLogs.realOutput'))
 
-        if (payload.stdout) {
-          payload.stdout.split('\n').forEach((l) => {
-            if (l.trim()) installLogs.value.push(`[STDOUT] ${l}`)
-          })
-        }
-        if (payload.stderr) {
-          payload.stderr.split('\n').forEach((l) => {
-            if (l.trim()) installLogs.value.push(`[STDERR] ${l}`)
-          })
-        }
+      if (payload.stdout) {
+        payload.stdout.split('\n').forEach((l) => {
+          if (l.trim()) installLogs.value.push(`[STDOUT] ${l}`)
+        })
+      }
+      if (payload.stderr) {
+        payload.stderr.split('\n').forEach((l) => {
+          if (l.trim()) installLogs.value.push(`[STDERR] ${l}`)
+        })
+      }
+      scrollToTerminalBottom()
+
+      if (payload.exitCode === 0 && !payload.timedOut) {
+        // 开启多轮退避探活自愈机制，彻底避开 Timing Race
+        installLogs.value.push(t('app.docker.install.simulatedLogs.socketWait'))
         scrollToTerminalBottom()
 
-        if (payload.exitCode === 0) {
-          // 开启多轮退避探活自愈机制，彻底避开 Timing Race
-          installLogs.value.push(t('app.docker.install.simulatedLogs.socketWait'))
+        // A. 静默缓冲等待 3.5 秒
+        await new Promise((resolve) => setTimeout(resolve, 3500))
+
+        // B. 启动最大 5 轮，每次间隔 1.5 秒的渐进式可用性探活
+        let checkSuccess = false
+        for (let attempt = 1; attempt <= 5; attempt++) {
+          installLogs.value.push(t('app.docker.install.simulatedLogs.healthCheck', { attempt }))
           scrollToTerminalBottom()
-
-          // A. 静默缓冲等待 3.5 秒
-          await new Promise((resolve) => setTimeout(resolve, 3500))
-
-          // B. 启动最大 5 轮，每次间隔 1.5 秒的渐进式可用性探活
-          let checkSuccess = false
-          for (let attempt = 1; attempt <= 5; attempt++) {
-            installLogs.value.push(t('app.docker.install.simulatedLogs.healthCheck', { attempt }))
+          const available = await fetchDockerAvailability()
+          if (available) {
+            checkSuccess = true
+            installLogs.value.push(t('app.docker.install.simulatedLogs.healthSuccess'))
             scrollToTerminalBottom()
-            const available = await fetchDockerAvailability()
-            if (available) {
-              checkSuccess = true
-              installLogs.value.push(t('app.docker.install.simulatedLogs.healthSuccess'))
-              scrollToTerminalBottom()
-              break
-            }
-            await new Promise((resolve) => setTimeout(resolve, 1500))
+            break
           }
+          await new Promise((resolve) => setTimeout(resolve, 1500))
+        }
 
-          if (checkSuccess) {
-            installSuccess.value = true
-            success = true
-            installLogs.value.push(t('app.docker.install.console.execDone'))
-            scrollToTerminalBottom()
-          } else {
-            installSuccess.value = false
-            installLogs.value.push(t('app.docker.install.simulatedLogs.healthFailed'))
-            scrollToTerminalBottom()
-          }
+        if (checkSuccess) {
+          installSuccess.value = true
+          success = true
+          installLogs.value.push(t('app.docker.install.console.execDone'))
+          scrollToTerminalBottom()
         } else {
           installSuccess.value = false
-          installLogs.value.push(
-            t('app.docker.install.console.exitCode', { code: String(payload.exitCode) }),
-          )
+          installLogs.value.push(t('app.docker.install.simulatedLogs.healthFailed'))
           scrollToTerminalBottom()
         }
+      } else {
+        installSuccess.value = false
+        if (payload.timedOut) {
+          installLogs.value.push(t('app.docker.install.console.timeout'))
+        }
+        installLogs.value.push(
+          t('app.docker.install.console.exitCode', { code: String(payload.exitCode) }),
+        )
+        scrollToTerminalBottom()
       }
     } catch (err) {
       if (simTimer) {
@@ -233,6 +240,10 @@ export function useDockerInstall(options: UseDockerInstallOptions) {
       installLogs.value.push(t('app.docker.install.console.commError', { error: errMsg }))
       scrollToTerminalBottom()
     } finally {
+      if (simTimer) {
+        clearInterval(simTimer)
+        simTimer = null
+      }
       isInstallingDocker.value = false
       windowStore.finishGlobalOperation(operationId)
     }
