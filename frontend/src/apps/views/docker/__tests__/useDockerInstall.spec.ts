@@ -94,4 +94,35 @@ describe('Docker 安装流程', () => {
     expect(mocks.finishGlobalOperation).toHaveBeenCalledOnce()
     wrapper.unmount()
   })
+
+  it.each([
+    { success: false, code: 502, message: 'Docker operation failed', data: null },
+    { success: true, code: 200, message: '', data: null },
+  ])('响应失败或缺失结果时明确结束安装：%j', async (response) => {
+    mocks.installDocker.mockResolvedValue(response)
+    const { install, availability, wrapper } = setup()
+    expect(await install.startInstallDocker()).toBe(false)
+    expect(install.installSuccess.value).toBe(false)
+    expect(install.installLogs.value.join('\n')).toContain(
+      response.message || '未收到 Docker 安装执行结果',
+    )
+    expect(install.isInstallingDocker.value).toBe(false)
+    expect(availability).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+    expect(mocks.finishGlobalOperation).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
+
+  it('超时展示输出、退出码及超时提示，不执行健康检查', async () => {
+    mocks.installDocker.mockResolvedValue(execution(124, true))
+    const { install, availability, wrapper } = setup()
+    expect(await install.startInstallDocker()).toBe(false)
+    expect(install.installSuccess.value).toBe(false)
+    expect(install.installLogs.value).toContain('[STDOUT] package output')
+    expect(install.installLogs.value.join('\n')).toContain('状态码：124')
+    expect(install.installLogs.value.join('\n')).toContain('安装任务超时')
+    expect(availability).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+    wrapper.unmount()
+  })
 })

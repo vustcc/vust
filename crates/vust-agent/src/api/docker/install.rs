@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{collections::HashMap, fs, sync::Arc};
 use tokio::process::Command;
+use vust_contracts::api::ErrorCode;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -59,7 +60,7 @@ pub async fn install(
             "only official Docker repository is supported".to_string(),
         ));
     }
-    let result: ApiResult<Response> = async {
+    let result: ApiResult<DockerInstallResult> = async {
         let os = read_os_release()?;
         let repo = match os.id.as_str() {
             "ubuntu" => "ubuntu",
@@ -97,26 +98,71 @@ pub async fn install(
             finished_at: chrono::Utc::now().timestamp(),
         };
 
-        if result.exit_code != 0 {
-            return Err(ApiError::Internal(format!(
-                "Docker install exited with code {}: {}",
-                result.exit_code,
-                result.stderr.trim()
-            )));
-        }
-        Ok(ApiResponse::success_with_raw("Docker install finished", Some(result)).into_response())
+        Ok(result)
     }
     .await;
-    context
-        .finish(
-            &state.metadata_db,
-            "docker_engine_install",
-            Some(("dockerEngine", "docker")),
-            json!({}),
-            false,
-            result,
-        )
-        .await
+    finish_install(&state.metadata_db, &context, result).await
+}
+
+/// 根据真实执行结果写入审计，完整保留已结束进程的输出。
+async fn finish_install(
+    pool: &crate::state::DbPool,
+    context: &DockerOperationContext,
+    result: ApiResult<DockerInstallResult>,
+) -> ApiResult<Response> {
+    let target = Some(("dockerEngine", "docker"));
+    match result {
+        Ok(result) => {
+            let parameters = json!({
+                "exitCode": result.exit_code,
+                "timedOut": result.timed_out,
+            });
+            if result.exit_code == 0 && !result.timed_out {
+                context
+                    .record_success(pool, "docker_engine_install", target, parameters, false)
+                    .await;
+            } else {
+                let output = if result.stderr.trim().is_empty() {
+                    result.stdout.trim()
+                } else {
+                    result.stderr.trim()
+                };
+                context
+                    .record_failure(
+                        pool,
+                        "docker_engine_install",
+                        target,
+                        parameters,
+                        format!(
+                            "Docker install exited with code {} (timed_out={}): {}",
+                            result.exit_code, result.timed_out, output
+                        ),
+                    )
+                    .await;
+            }
+            Ok(ApiResponse::success_with_raw("Docker install finished", result).into_response())
+        }
+        Err(error) => {
+            context
+                .record_failure(
+                    pool,
+                    "docker_engine_install",
+                    target,
+                    json!({}),
+                    error.detail.as_deref().unwrap_or(&error.message),
+                )
+                .await;
+            if error.status.is_server_error() {
+                Err(ApiError::bad_gateway(
+                    ErrorCode::DockerOperationFailed,
+                    "Docker installation could not be executed; see operation log for details",
+                )
+                .with_detail(error.detail.unwrap_or(error.message)))
+            } else {
+                Err(error)
+            }
+        }
+    }
 }
 
 fn read_os_release() -> ApiResult<OsRelease> {
@@ -205,7 +251,83 @@ $SUDO docker version
 
 #[cfg(test)]
 mod tests {
-    use super::build_install_script;
+    use super::*;
+    use axum::body::to_bytes;
+    use vust_contracts::logging::OperationOutcome;
+
+    /// 使用模拟执行结果验证响应与审计，不执行系统安装命令。
+    #[tokio::test]
+    async fn completed_execution_preserves_output_and_actual_audit_outcome() {
+        let pool = crate::test_support::setup_test_db().await;
+        let context = DockerOperationContext::system("test");
+        for (exit_code, timed_out, stdout, stderr) in [
+            (0, false, "installed", ""),
+            (100, false, "apt output", "repository unavailable"),
+            (1, false, "failure only in stdout", ""),
+            (124, true, "partial output", ""),
+        ] {
+            let response = finish_install(
+                &pool,
+                &context,
+                Ok(DockerInstallResult {
+                    exit_code,
+                    timed_out,
+                    stdout: stdout.to_string(),
+                    stderr: stderr.to_string(),
+                    started_at: 1,
+                    finished_at: 2,
+                }),
+            )
+            .await
+            .unwrap();
+            assert_eq!(response.status(), axum::http::StatusCode::OK);
+            let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(body["data"]["exitCode"], exit_code);
+            assert_eq!(body["data"]["timedOut"], timed_out);
+            assert_eq!(body["data"]["stdout"], stdout);
+            assert_eq!(body["data"]["stderr"], stderr);
+        }
+        let events = crate::services::operation_outbox::pending(&pool, 10)
+            .await
+            .unwrap();
+        assert_eq!(events.len(), 4);
+        assert_eq!(events[0].outcome, OperationOutcome::Success);
+        assert!(events[0].error_summary.is_none());
+        for (event, expected) in events[1..].iter().zip([
+            "repository unavailable",
+            "failure only in stdout",
+            "timed_out=true",
+        ]) {
+            assert_eq!(event.outcome, OperationOutcome::Failure);
+            assert!(event.error_summary.as_deref().unwrap().contains(expected));
+            assert!(event.parameters.contains_key("exitCode"));
+            assert!(event.parameters.contains_key("timedOut"));
+        }
+    }
+
+    #[tokio::test]
+    async fn execution_error_records_diagnostic_before_http_conversion() {
+        let pool = crate::test_support::setup_test_db().await;
+        let error = finish_install(
+            &pool,
+            &DockerOperationContext::system("test"),
+            Err(ApiError::internal(
+                "failed to install Docker: executable missing",
+            )),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::DockerOperationFailed);
+        let events = crate::services::operation_outbox::pending(&pool, 10)
+            .await
+            .unwrap();
+        assert_eq!(events[0].outcome, OperationOutcome::Failure);
+        assert_eq!(
+            events[0].error_summary.as_deref(),
+            Some("failed to install Docker: executable missing")
+        );
+    }
 
     #[test]
     fn install_script_uses_official_repository_without_remote_shell_script() {
